@@ -173,7 +173,7 @@ develop
 └── module/metaclaw                     # MetaClaw module
 ```
 
-### Phase 2 (Integration & Composite Skills)
+### Phase 2 (Integration & Composite Skills) ✅
 ```
 develop
 ├── feature/integration-testing         # End-to-end integration testing
@@ -182,7 +182,16 @@ develop
 └── ...
 ```
 
+### Phase 3 (Learning & Optimization)
+```
+develop
+├── feature/metaclaw-learning-integration  # MetaClaw continual learning
+├── feature/skill-evolution-pipeline       # Skill evolution pipeline
+├── feature/performance-optimization        # Performance optimization
+└── ...
+```
+
 ---
 
-*Document Version: 2.2 - Phase 2 branches renamed*
+*Document Version: 2.3 - Phase 3 branches added*
 *Last Updated: 2026-04-17*
