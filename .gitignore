@@ -89,3 +89,10 @@ site/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Database
+*.db
+
+# Records and logs
+records/
+backend/db/*.db
