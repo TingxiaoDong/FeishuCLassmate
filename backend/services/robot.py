@@ -13,7 +13,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.robot_api.robot_api import RobotAPI
-from src.hardware.simple_adapter import MockHardwareAdapter
+from src.hardware.adapters.temi_adapter import TemiAdapter
 from src.shared.interfaces import RobotStatus as RobotStatusEnum, RobotState
 from backend.db.database import get_db
 from backend.models.schemas import (
@@ -34,7 +34,9 @@ class RobotService:
 
     def __init__(self):
         """Initialize robot service with RobotAPI."""
-        self._robot_api = RobotAPI(hardware_adapter=MockHardwareAdapter())
+        # Use TemiAdapter with the robot's IP address
+        temi_adapter = TemiAdapter(ip="192.168.31.121", port=8175)
+        self._robot_api = RobotAPI(hardware_adapter=temi_adapter)
         # Pre-cached UUID generator for reduced allocations
         self._uuid_cache = [str(uuid.uuid4()) for _ in range(10)]
         self._uuid_index = 0
