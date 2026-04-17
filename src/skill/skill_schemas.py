@@ -363,6 +363,7 @@ SKILL_REGISTRY: dict[str, SkillSchema] = {
     # Composite skills (Phase 2)
     "approach_and_grasp": APPROACH_AND_GRASP_SCHEMA,
     "pick_and_place": PICK_AND_PLACE_SCHEMA,
+    # Lab Robot Skills - added at end of file via late import
 }
 
 
@@ -374,3 +375,46 @@ def get_skill_schema(skill_name: str) -> Optional[SkillSchema]:
 def list_skills() -> list[str]:
     """List all available skill names."""
     return list(SKILL_REGISTRY.keys())
+
+
+# ============================================================
+# Lab Robot Skills Integration
+# Import at end to avoid circular import
+# ============================================================
+
+try:
+    from src.skill.lab_robot_skills import (
+        NAVIGATE_TO_SCHEMA,
+        RECOGNIZE_PERSON_SCHEMA,
+        SPEAK_SCHEMA,
+        DETECT_RFID_SCHEMA,
+        CAPTURE_VISION_SCHEMA,
+        UPDATE_GANTT_SCHEMA,
+        MONITOR_FOCUS_SCHEMA,
+        INITIATE_CONVERSATION_SCHEMA,
+        CONDUCT_LAB_TOUR_SCHEMA,
+        MANAGE_ASSET_INVENTORY_SCHEMA,
+        SUPERVISE_STUDENT_SCHEMA,
+        TRACK_PROJECT_PROGRESS_SCHEMA,
+        ENGAGE_IDLE_BEHAVIOR_SCHEMA,
+    )
+
+    # Add lab robot skills to registry
+    SKILL_REGISTRY.update({
+        "navigate_to": NAVIGATE_TO_SCHEMA,
+        "recognize_person": RECOGNIZE_PERSON_SCHEMA,
+        "speak": SPEAK_SCHEMA,
+        "detect_rfid": DETECT_RFID_SCHEMA,
+        "capture_vision": CAPTURE_VISION_SCHEMA,
+        "update_gantt": UPDATE_GANTT_SCHEMA,
+        "monitor_focus": MONITOR_FOCUS_SCHEMA,
+        "initiate_conversation": INITIATE_CONVERSATION_SCHEMA,
+        "conduct_lab_tour": CONDUCT_LAB_TOUR_SCHEMA,
+        "manage_asset_inventory": MANAGE_ASSET_INVENTORY_SCHEMA,
+        "supervise_student": SUPERVISE_STUDENT_SCHEMA,
+        "track_project_progress": TRACK_PROJECT_PROGRESS_SCHEMA,
+        "engage_idle_behavior": ENGAGE_IDLE_BEHAVIOR_SCHEMA,
+    })
+except ImportError:
+    # Lab robot skills module not available
+    pass

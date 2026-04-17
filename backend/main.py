@@ -15,7 +15,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from backend.db.database import init_database
-from backend.api import auth, robot, skills, websocket, sessions, monitoring, debug
+from backend.api import auth, robot, skills, websocket, sessions, monitoring, debug, pipeline, skill_bank, feishu
 from backend.api.auth import limiter
 
 
@@ -72,6 +72,9 @@ app.include_router(sessions.router)
 app.include_router(websocket.router)
 app.include_router(monitoring.router)
 app.include_router(debug.router)
+app.include_router(pipeline.router)
+app.include_router(skill_bank.router)
+app.include_router(feishu.router)
 
 
 @app.get("/health")

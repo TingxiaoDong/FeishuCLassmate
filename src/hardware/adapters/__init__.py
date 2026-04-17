@@ -11,6 +11,7 @@ from .base import IHardwareAdapter, HardwareCommandResult
 from .mock_adapter import MockHardwareAdapter
 from .serial_adapter import SerialHardwareAdapter
 from .network_adapter import NetworkHardwareAdapter
+from .temi_adapter import TemiAdapter
 
 __all__ = [
     "IHardwareAdapter",
@@ -18,4 +19,5 @@ __all__ = [
     "MockHardwareAdapter",
     "SerialHardwareAdapter",
     "NetworkHardwareAdapter",
+    "TemiAdapter",
 ]

@@ -10,6 +10,7 @@ from .skill_executor import SkillExecutor
 from .performance_tracker import SkillPerformanceTracker
 from .prm_scorer import RobotPRMScorer, CompositePRMScorer, ProcessRewardScore
 from .skill_converter import RobotSkillConverter, SkillSchemaUpdater
+from .shadow_mode import MetaClawShadowMode
 from .interfaces import (
     ExecutionOutcome,
     ExecutionStatus,
@@ -34,6 +35,8 @@ __all__ = [
     # Skill conversion
     "RobotSkillConverter",
     "SkillSchemaUpdater",
+    # Shadow mode
+    "MetaClawShadowMode",
     # Data types
     "ExecutionOutcome",
     "ExecutionStatus",

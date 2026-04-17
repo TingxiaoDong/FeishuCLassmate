@@ -116,3 +116,31 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
+
+
+# ---------- Skill Bank Models ----------
+
+class SkillCandidateCreate(BaseModel):
+    name: str
+    schema: dict
+    metadata: Optional[dict] = None
+
+
+class SkillCandidateResponse(BaseModel):
+    id: str
+    name: str
+    version: str
+    schema: dict
+    status: str
+    created_at: Optional[str] = None
+    verified_at: Optional[str] = None
+    verified_by: Optional[str] = None
+    metadata: Optional[dict] = None
+
+
+class SkillVerifyRequest(BaseModel):
+    skill_id: str
+
+
+class SkillListResponse(BaseModel):
+    skills: list[SkillCandidateResponse]

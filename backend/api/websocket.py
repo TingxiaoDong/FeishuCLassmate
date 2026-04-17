@@ -65,7 +65,7 @@ async def robot_websocket_endpoint(
                     manager.disconnect(websocket, channel)
                     await manager.connect(websocket, new_channel)
                     channel = new_channel
-                elif message.get("type") == "get_status"):
+                elif message.get("type") == "get_status":
                     service = get_robot_service()
                     status = await service.get_status()
                     await websocket.send_json({
@@ -85,6 +85,89 @@ async def robot_websocket_endpoint(
         manager.disconnect(websocket, channel)
         try:
             update_task.cancel()
+        except:
+            pass
+
+
+@router.websocket("/ws/openclaw")
+async def openclaw_bridge_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint for OpenClaw Gateway bridge.
+
+    OpenClaw connects here to send skill sequences for execution.
+    This bridges OpenClaw's planning with our robot control pipeline.
+
+    Message format from OpenClaw:
+    {
+        "type": "skill_sequence",
+        "task": "移动到位置A",
+        "skills": [{"skill": "move_to", "params": {...}}, ...]
+    }
+    """
+    await manager.connect(websocket, "openclaw")
+    try:
+        await websocket.send_json({
+            "type": "connected",
+            "channel": "openclaw",
+            "message": "Connected to OpenClaw bridge"
+        })
+
+        # Import here to avoid circular imports
+        from src.planner.execution_pipeline import ExecutionPipeline
+        from src.planner.openclaw_planner import OpenClawPlanner
+        from src.robot_api.mock_robot_api import MockRobotAPI
+
+        pipeline = ExecutionPipeline(MockRobotAPI(), OpenClawPlanner())
+
+        while True:
+            data = await websocket.receive_text()
+            message = json.loads(data)
+
+            if message.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+
+            elif message.get("type") == "skill_sequence":
+                # Execute skill sequence from OpenClaw
+                skills = message.get("skills", [])
+                task = message.get("task", "")
+
+                results = []
+                for skill in skills:
+                    result = await pipeline.execute_skill(skill)
+                    results.append({
+                        "skill": skill.get("skill"),
+                        "status": "completed" if hasattr(result, 'success') and result.success else "failed",
+                        "message": result.message if hasattr(result, 'message') else str(result)
+                    })
+
+                await websocket.send_json({
+                    "type": "execution_result",
+                    "task": task,
+                    "results": results,
+                    "success": all(r.get("status") == "completed" for r in results)
+                })
+
+            elif message.get("type") == "execute_task":
+                # Execute a full task string
+                task = message.get("task", "")
+                result = await pipeline.execute(task)
+
+                await websocket.send_json({
+                    "type": "execution_result",
+                    "task": task,
+                    "result": result.get("final_result"),
+                    "success": result.get("final_result", {}).get("success", False)
+                })
+
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, "openclaw")
+    except Exception as e:
+        manager.disconnect(websocket, "openclaw")
+        try:
+            await websocket.send_json({
+                "type": "error",
+                "message": str(e)
+            })
         except:
             pass
 
