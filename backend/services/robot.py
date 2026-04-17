@@ -1,10 +1,12 @@
 """
 Robot service - wraps RobotAPI for backend consumption.
+Performance optimized with fire-and-forget logging.
 """
 import sys
 import os
 import uuid
 import json
+import asyncio
 from typing import Optional
 
 # Add project root to path for imports
@@ -33,6 +35,9 @@ class RobotService:
     def __init__(self):
         """Initialize robot service with RobotAPI."""
         self._robot_api = RobotAPI(hardware_adapter=MockHardwareAdapter())
+        # Pre-cached UUID generator for reduced allocations
+        self._uuid_cache = [str(uuid.uuid4()) for _ in range(10)]
+        self._uuid_index = 0
 
     async def move_joints(self, request: MoveJointsRequest) -> RobotStatusResponse:
         """Execute move_joints command."""
@@ -116,31 +121,53 @@ class RobotService:
         )
 
     async def _log_skill_execution(self, skill_name: str, parameters: dict, result: RobotStatusEnum):
-        """Log skill execution to database."""
-        async with get_db() as db:
-            await db.execute(
-                """
-                INSERT INTO skill_executions (id, skill_name, parameters, status, result, completed_at)
-                VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                """,
-                (
-                    str(uuid.uuid4()),
-                    skill_name,
-                    json.dumps(parameters),
-                    result.state.value,
-                    json.dumps({"message": result.message})
+        """Log skill execution to database (fire-and-forget for latency)."""
+        # Reuse cached UUID to reduce allocations
+        self._uuid_index = (self._uuid_index + 1) % len(self._uuid_cache)
+        execution_id = self._uuid_cache[self._uuid_index]
+
+        # Fire-and-forget: don't await database write
+        asyncio.create_task(self._persist_skill_execution(
+            execution_id, skill_name, parameters, result.state.value, result.message
+        ))
+
+    async def _persist_skill_execution(self, execution_id: str, skill_name: str,
+                                       parameters: dict, state_value: str, message: str):
+        """Persist skill execution to database (called as background task)."""
+        try:
+            async with get_db() as db:
+                await db.execute(
+                    """
+                    INSERT INTO skill_executions (id, skill_name, parameters, status, result, completed_at)
+                    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (execution_id, skill_name, json.dumps(parameters),
+                     state_value, json.dumps({"message": message}))
                 )
-            )
-            await db.commit()
+                await db.commit()
+        except Exception:
+            # Silently ignore logging failures to not affect main path
+            pass
 
     async def _save_world_state(self, world_state):
-        """Save world state snapshot to database."""
-        async with get_db() as db:
-            await db.execute(
-                "INSERT INTO world_state_history (timestamp, state_json) VALUES (?, ?)",
-                (world_state.timestamp, json.dumps(world_state.to_dict()))
-            )
-            await db.commit()
+        """Save world state snapshot to database (fire-and-forget)."""
+        state_dict = world_state.to_dict()
+        timestamp = world_state.timestamp
+        # Fire-and-forget: don't await database write
+        asyncio.create_task(self._persist_world_state(timestamp, state_dict))
+
+    async def _persist_world_state(self, timestamp: float, state_dict: dict):
+        """Persist world state to database (called as background task)."""
+        try:
+            async with get_db() as db:
+                await db.execute(
+                    "INSERT INTO world_state_history (timestamp, state_json) VALUES (?, ?)",
+                    (timestamp, json.dumps(state_dict))
+                )
+                await db.commit()
+        except Exception:
+            # Silently ignore logging failures
+            pass
 
 
 # Singleton instance

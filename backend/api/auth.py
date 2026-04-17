@@ -4,9 +4,12 @@ Authentication API routes.
 import uuid
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from backend.db.database import get_db
 from backend.models.schemas import UserCreate, UserResponse, Token
@@ -21,6 +24,9 @@ from backend.services.auth import (
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 
+# Rate limiter for brute force protection
+limiter = Limiter(key_func=get_remote_address)
+
 
 @router.on_event("startup")
 async def startup_event():
@@ -29,7 +35,8 @@ async def startup_event():
 
 
 @router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("5/minute")
+async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Authenticate user and return JWT token."""
     async with get_db() as db:
         cursor = await db.execute(
@@ -51,7 +58,8 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 
 @router.post("/register", response_model=UserResponse)
-async def register_user(user: UserCreate):
+@limiter.limit("3/minute")
+async def register_user(request: Request, user: UserCreate):
     """Register a new user."""
     async with get_db() as db:
         # Check if username exists

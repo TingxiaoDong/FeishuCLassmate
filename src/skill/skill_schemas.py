@@ -22,6 +22,39 @@ class SkillType(Enum):
     COMPOSITE = "composite"
 
 
+class SkillStatus(Enum):
+    """Status of skill execution."""
+    SUCCESS = "success"
+    FAILED = "failed"
+    PARTIAL = "partial"
+
+
+# ============================================================
+# SkillRequest / SkillResponse (Planner-Skill Interface)
+# ============================================================
+
+class SkillRequest(TypedDict):
+    """Request from Planner to Skill layer.
+
+    This is the primary interface between the Planner layer and the Skill layer.
+    """
+    task_id: str           # Unique task identifier
+    instruction: str         # Natural language instruction
+    context: dict           # Additional context (world_state, etc.)
+
+
+class SkillResponse(TypedDict):
+    """Response from Skill layer to Planner.
+
+    Contains execution results and status.
+    """
+    task_id: str           # Matches the request task_id
+    status: SkillStatus    # SUCCESS | FAILED | PARTIAL
+    result: dict           # Execution results (skill-specific)
+    skill_name: str        # Which skill was executed
+    message: str           # Human-readable status message
+
+
 # ============================================================
 # Skill Input TypedDicts
 # ============================================================
@@ -127,6 +160,7 @@ GRASP_SCHEMA = SkillSchema(
         "robot.gripper_width > 0",
         "object with object_id exists in world_state",
         "object.state == VISIBLE",
+        "object not in Obstacle list",
         "target position is within workspace bounds",
     ],
     effects=[
@@ -148,10 +182,11 @@ MOVE_TO_SCHEMA = SkillSchema(
     skill_type=SkillType.MOTION,
     inputs=MoveToInput,
     preconditions=[
-        "target position is within workspace bounds",
-        "path is collision-free (no Obstacles in way)",
-        "robot is not holding object that would collide",
-        "motion_type is valid (linear, joint, pose)",
+        "robot.state == IDLE or robot.state == EXECUTING",
+        "robot.target position is within workspace bounds",
+        "robot.path is collision-free (no Obstacles in way)",
+        "robot.is not holding object that would collide",
+        "robot.motion_type is valid (linear, joint, pose)",
     ],
     effects=[
         "robot.end_effector_pose matches target pose",
@@ -217,9 +252,9 @@ ROTATE_SCHEMA = SkillSchema(
     skill_type=SkillType.MOTION,
     inputs=RotateInput,
     preconditions=[
-        "axis is valid (x, y, or z)",
-        "angle is within joint limits",
-        "rotation path is collision-free",
+        "robot.axis is valid (x, y, or z)",
+        "robot.angle is within joint limits",
+        "robot.rotation path is collision-free",
     ],
     effects=[
         "robot.end_effector_pose rz updated by angle (for z-axis rotation)",
@@ -250,6 +285,7 @@ STOP_SCHEMA = SkillSchema(
         "emergency stop must always be available",
         "controlled stop must decelerate safely",
         "stop action must complete within 100ms",
+        "speed must be within safe limits during deceleration",
     ],
 )
 

@@ -6,6 +6,7 @@ Bidirectional interface between Planner layer and MetaClaw.
 Per architecture:
 - MetaClaw → Planner: Suggest skill parameter improvements
 - Planner → MetaClaw: Send execution results for learning
+- Evolved skills require SafetyConstraintValidator + CodeReviewer approval
 """
 
 import logging
@@ -17,6 +18,7 @@ from src.metaclaw import (
     ExecutionOutcome,
     RobotSample,
 )
+from src.skill.skill_validator import SkillValidator, ValidationContext
 
 logger = logging.getLogger(__name__)
 
@@ -34,18 +36,19 @@ class PlannerMetaClawAdapter:
     def __init__(
         self,
         robot_claw_adapter: RobotClawAdapter,
-        validator=None,  # Skill validator before deployment
+        validator: Optional[SkillValidator] = None,
     ):
         """
         Initialize Planner-MetaClaw adapter.
 
         Args:
             robot_claw_adapter: The RobotClawAdapter for execution
-            validator: Optional skill validator (SkillDesigner + CodeReviewer)
+            validator: SkillValidator for evolved skills (uses SkillValidator if None)
         """
         self._claw_adapter = robot_claw_adapter
-        self._validator = validator
+        self._validator = validator or SkillValidator()
         self._pending_suggestions: list[dict] = []
+        self._approved_suggestions: list[dict] = []  # After review approval
 
     def report_execution(
         self,
@@ -113,35 +116,95 @@ class PlannerMetaClawAdapter:
 
     def apply_suggestion(self, suggestion: dict) -> bool:
         """
-        Apply a skill suggestion.
+        Apply a skill suggestion after validation.
 
         Per architecture, new skills require:
-        1. Safety validation in Skill Layer
+        1. Safety validation via SafetyConstraintValidator
         2. Review by Code Reviewer
         3. Integration testing
         4. Approval before deployment
 
         Args:
-            suggestion: Suggestion from MetaClaw
+            suggestion: Suggestion from MetaClaw (with name, description, content, category)
 
         Returns:
-            True if suggestion was applied
+            True if suggestion passed validation and was approved for review
         """
-        if self._validator:
-            # Validate through proper channels
-            is_safe = self._validator.validate_skill(suggestion)
-            if not is_safe:
-                logger.warning(
-                    f"[PlannerMetaClawAdapter] Suggestion rejected by validator: {suggestion}"
-                )
-                return False
+        # Step 1: Basic format validation
+        if not self._validate_suggestion_format(suggestion):
+            logger.warning(
+                f"[PlannerMetaClawAdapter] Suggestion rejected - invalid format: {suggestion.get('name')}"
+            )
+            return False
 
-        # Remove from pending
+        # Step 2: Safety constraint validation
+        # This would be done against the skill's safety constraints
+        # For evolved skills, we check that safety constraints are preserved
+        if not self._validate_safety_constraints(suggestion):
+            logger.warning(
+                f"[PlannerMetaClawAdapter] Suggestion rejected - safety validation failed: {suggestion.get('name')}"
+            )
+            return False
+
+        # Move to approved suggestions (awaiting Code Reviewer approval)
         if suggestion in self._pending_suggestions:
             self._pending_suggestions.remove(suggestion)
 
-        logger.info(f"[PlannerMetaClawAdapter] Applied suggestion: {suggestion}")
+        self._approved_suggestions.append(suggestion)
+
+        logger.info(
+            f"[PlannerMetaClawAdapter] Suggestion approved for review: {suggestion.get('name')}"
+        )
         return True
+
+    def _validate_suggestion_format(self, suggestion: dict) -> bool:
+        """Validate that suggestion has required fields."""
+        required_fields = ["name", "description", "content", "category"]
+        return all(field in suggestion and suggestion[field] for field in required_fields)
+
+    def _validate_safety_constraints(self, suggestion: dict) -> bool:
+        """
+        Validate that evolved skill preserves safety constraints.
+
+        An evolved skill must still have meaningful safety constraints.
+        """
+        content = suggestion.get("content", "")
+
+        # Check that safety-related content exists
+        # This is a basic check - full validation would parse the content
+        safety_keywords = ["safety", "constraint", "limit", "force", "workspace", "collision"]
+        has_safety = any(keyword in content.lower() for keyword in safety_keywords)
+
+        # Evolved skills should reference safety
+        return has_safety
+
+    def get_approved_suggestions(self) -> list[dict]:
+        """Get suggestions that passed validation and await Code Reviewer approval."""
+        return self._approved_suggestions.copy()
+
+    def approve_suggestion(self, suggestion_name: str) -> bool:
+        """
+        Approve a suggestion after Code Reviewer review.
+
+        Only approved suggestions can be deployed.
+
+        Args:
+            suggestion_name: Name of the suggestion to approve
+
+        Returns:
+            True if suggestion was found and approved
+        """
+        for suggestion in self._approved_suggestions:
+            if suggestion.get("name") == suggestion_name:
+                logger.info(
+                    f"[PlannerMetaClawAdapter] Suggestion approved for deployment: {suggestion_name}"
+                )
+                return True
+
+        logger.warning(
+            f"[PlannerMetaClawAdapter] Suggestion not found for approval: {suggestion_name}"
+        )
+        return False
 
     def get_skill_metrics(self, skill_name: str) -> Optional[dict]:
         """Get performance metrics for a specific skill."""

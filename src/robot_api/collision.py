@@ -7,6 +7,9 @@ Provides:
 - Capsule collision detection
 - Collision checking for robot links
 - Workspace boundary checking
+
+Per architecture: This module is part of the Robot API layer,
+providing collision detection utilities that don't modify IRobotAPI contract.
 """
 from dataclasses import dataclass
 from typing import Protocol
@@ -29,6 +32,9 @@ class Vector3:
 
     def __add__(self, other: "Vector3") -> "Vector3":
         return Vector3(self.x + other.x, self.y + other.y, self.z + other.z)
+
+    def __mul__(self, scalar: float) -> "Vector3":
+        return Vector3(self.x * scalar, self.y * scalar, self.z * scalar)
 
     def dot(self, other: "Vector3") -> float:
         return self.x * other.x + self.y * other.y + self.z * other.z
@@ -80,7 +86,6 @@ class BoundingBox:
 
     def intersects_sphere(self, sphere: "Sphere") -> bool:
         """Check if box intersects a sphere."""
-        # Find closest point on box to sphere center
         closest_x = max(self.center.x - self.size.x, min(sphere.center.x, self.center.x + self.size.x))
         closest_y = max(self.center.y - self.size.y, min(sphere.center.y, self.center.y + self.size.y))
         closest_z = max(self.center.z - self.size.z, min(sphere.center.z, self.center.z + self.size.z))
@@ -120,29 +125,22 @@ class Capsule:
 
     def intersects_sphere(self, sphere: Sphere) -> bool:
         """Check if capsule intersects a sphere."""
-        # Project sphere center onto capsule line segment
         segment = self.end - self.start
         segment_length = segment.magnitude()
 
         if segment_length < 1e-10:
-            # Degenerate capsule (point)
             return sphere.center.distance_to(self.start) <= (self.radius + sphere.radius)
 
         segment_normalized = segment.normalized()
         to_sphere = sphere.center - self.start
         projection = to_sphere.dot(segment_normalized)
-
-        # Clamp projection to segment
         projection = max(0, min(segment_length, projection))
 
-        # Closest point on segment to sphere center
         closest = self.start + segment_normalized * projection
-
         return sphere.center.distance_to(closest) <= (self.radius + sphere.radius)
 
     def intersects_box(self, box: BoundingBox) -> bool:
         """Check if capsule intersects a box."""
-        # Simplified: use sphere approximation at capsule midpoint
         mid = Vector3(
             (self.start.x + self.end.x) / 2,
             (self.start.y + self.end.y) / 2,
@@ -234,7 +232,6 @@ class CollisionDetector:
         """
         collisions = []
 
-        # Check robot links against obstacles
         for link in self._robot_links:
             capsule = Capsule(
                 start=link.start_position,
@@ -247,17 +244,11 @@ class CollisionDetector:
                     if capsule.intersects_box(obstacle.geometry) or capsule.intersects_sphere(obstacle.geometry):
                         collisions.append(f"Link '{link.name}' collides with obstacle '{obstacle.name}'")
 
-        # Check self-collision between robot links
         for i, link1 in enumerate(self._robot_links):
             for link2 in self._robot_links[i + 1:]:
-                # Skip adjacent links (they naturally touch at joints)
                 if self._are_adjacent_links(link1, link2):
                     continue
 
-                capsule1 = Capsule(link1.start_position, link1.end_position, link1.radius)
-                capsule2 = Capsule(link2.start_position, link2.end_position, link2.radius)
-
-                # Simple sphere-sphere collision check at midpoints
                 mid1 = Vector3(
                     (link1.start_position.x + link1.end_position.x) / 2,
                     (link1.start_position.y + link1.end_position.y) / 2,
@@ -280,8 +271,7 @@ class CollisionDetector:
     def check_point_collision(self, point: Vector3) -> tuple[bool, list[str]]:
         """Check if a point collides with any obstacles."""
         collisions = []
-
-        sphere = Sphere(center=point, radius=0.01)  # small sphere around point
+        sphere = Sphere(center=point, radius=0.01)
 
         for obstacle in self._obstacles:
             if isinstance(obstacle.geometry, BoundingBox):
@@ -294,10 +284,7 @@ class CollisionDetector:
         return len(collisions) > 0, collisions
 
     def check_path_collision(self, path: list[Vector3]) -> tuple[bool, list[str]]:
-        """Check if a path collides with any obstacles.
-
-        Uses sampling to check multiple points along the path.
-        """
+        """Check if a path collides with any obstacles."""
         collisions = []
 
         for i, point in enumerate(path):
@@ -314,11 +301,9 @@ class CollisionDetector:
         """Check if two links are adjacent (share a joint)."""
         eps = 1e-6
 
-        # Check if end of link1 is near start of link2
         if link1.end_position.distance_to(link2.start_position) < eps:
             return True
 
-        # Check if end of link2 is near start of link1
         if link2.end_position.distance_to(link1.start_position) < eps:
             return True
 
@@ -367,16 +352,11 @@ class SafetyChecker:
         if self._emergency_stop_active:
             return False, "Emergency stop is active"
 
-        # Update collision detector with current link positions
         self._collision_detector.set_robot_links(robot_links)
 
-        # Check for collisions
         has_collision, collisions = self._collision_detector.check_collision()
         if has_collision:
             return False, "; ".join(collisions)
-
-        # Check joint limits
-        # (would need joint limits as input, simplified here)
 
         return True, ""
 

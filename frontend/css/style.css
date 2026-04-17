@@ -822,9 +822,405 @@ body {
     color: var(--text-primary);
 }
 
+/* Skill Metrics Table */
+.skill-metrics-table {
+    max-height: 120px;
+    overflow-y: auto;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.metrics-table {
+    width: 100%;
+    font-size: 0.7rem;
+    border-collapse: collapse;
+}
+
+.metrics-table th {
+    text-align: left;
+    padding: 4px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.metrics-table td {
+    padding: 4px;
+    color: var(--text-primary);
+}
+
+.metrics-table td.success {
+    color: var(--accent-green);
+}
+
+.metrics-table td.error {
+    color: var(--accent-red);
+}
+
+/* MetaClaw Status */
+.metaclaw-status {
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 8px;
+}
+
+.metaclaw-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.metaclaw-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.metaclaw-status.connected .status-icon {
+    color: var(--accent-green);
+}
+
+.metaclaw-status.disconnected .status-icon {
+    color: var(--accent-red);
+}
+
+.metaclaw-status .status-text {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.metaclaw-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.metaclaw-info .info-item {
+    display: flex;
+    gap: 5px;
+    font-size: 0.7rem;
+}
+
+.metaclaw-info .label {
+    color: var(--text-secondary);
+}
+
+.metaclaw-info .value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Monitoring Panel */
+.monitoring-panel {
+    display: none;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 10px;
+    height: 180px;
+}
+
+.monitoring-panel.visible {
+    display: grid;
+}
+
+.system-health-panel,
+.performance-chart-panel,
+.resource-usage-panel {
+    overflow: hidden;
+}
+
+/* System Health */
+.system-health {
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+}
+
+.health-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background-color: var(--bg-panel);
+    border-radius: 4px;
+}
+
+.health-item.healthy .health-icon {
+    color: var(--accent-green);
+}
+
+.health-item.error .health-icon {
+    color: var(--accent-red);
+}
+
+.health-item.unknown .health-icon {
+    color: var(--text-secondary);
+}
+
+.health-label {
+    font-size: 0.7rem;
+    color: var(--text-primary);
+}
+
+/* Performance Chart */
+.performance-chart {
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 10px;
+    height: 100%;
+}
+
+.chart-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.chart-bars {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.chart-bar {
+    flex: 1;
+    background-color: var(--accent-blue);
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    transition: height 0.3s ease;
+}
+
+.chart-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.6rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+}
+
+/* Resource Usage */
+.resource-usage {
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.resource-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.resource-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.resource-label {
+    width: 50px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.resource-bar {
+    flex: 1;
+    height: 8px;
+    background-color: var(--bg-panel);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.resource-fill {
+    height: 100%;
+    background-color: var(--accent-blue);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.resource-value {
+    width: 40px;
+    font-size: 0.7rem;
+    color: var(--text-primary);
+    text-align: right;
+}
+
 /* Config Panel */
 .config-panel {
     overflow-y: auto;
+}
+
+/* Debugger Controls */
+.debugger-controls {
+    margin-bottom: 10px;
+}
+
+.debugger-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    font-size: 0.75rem;
+}
+
+.debugger-status.enabled {
+    border-left: 3px solid var(--accent-green);
+}
+
+.debugger-status.disabled {
+    border-left: 3px solid var(--accent-red);
+}
+
+.debugger-icon {
+    font-size: 0.9rem;
+}
+
+.breakpoint-count {
+    color: var(--text-secondary);
+    margin-left: auto;
+}
+
+.debug-buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.debug-btn {
+    padding: 5px 10px;
+    font-size: 0.7rem;
+}
+
+.debug-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Error Traces */
+.error-trace-list {
+    max-height: 150px;
+    overflow-y: auto;
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 5px;
+}
+
+.error-trace-item {
+    background-color: var(--bg-panel);
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 5px;
+    border-left: 3px solid var(--accent-red);
+}
+
+.trace-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+    font-size: 0.7rem;
+}
+
+.trace-time {
+    color: var(--text-secondary);
+    font-family: 'Courier New', monospace;
+}
+
+.trace-context {
+    color: var(--accent-yellow);
+}
+
+.trace-error {
+    font-size: 0.75rem;
+    color: var(--accent-red);
+    word-break: break-word;
+}
+
+.trace-stack {
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-primary);
+    padding: 5px;
+    border-radius: 3px;
+    margin-top: 5px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+}
+
+/* Parameter Inspection */
+.param-inspection {
+    background-color: var(--bg-primary);
+    border-radius: 4px;
+    padding: 10px;
+}
+
+.param-inspection h4 {
+    font-size: 0.7rem;
+    color: var(--accent-blue);
+    margin-bottom: 8px;
+}
+
+.param-table {
+    margin-bottom: 15px;
+}
+
+.param-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    font-size: 0.7rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.param-key {
+    color: var(--accent-yellow);
+    font-family: 'Courier New', monospace;
+}
+
+.param-value {
+    color: var(--text-primary);
+    font-family: 'Courier New', monospace;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.inspection-issue {
+    display: flex;
+    gap: 8px;
+    padding: 5px;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    margin-bottom: 3px;
+}
+
+.inspection-issue.error {
+    background-color: rgba(231, 76, 60, 0.2);
+    color: var(--accent-red);
+}
+
+.inspection-issue.warning {
+    background-color: rgba(241, 196, 15, 0.2);
+    color: var(--accent-yellow);
+}
+
+.issue-param {
+    font-weight: 600;
+    font-family: 'Courier New', monospace;
+}
+
+.inspection-ok {
+    font-size: 0.75rem;
+    color: var(--accent-green);
+    padding: 10px;
+    text-align: center;
 }
 
 .config-section {

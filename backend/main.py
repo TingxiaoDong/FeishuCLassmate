@@ -4,14 +4,19 @@ FastAPI Backend Server for Robotics System.
 This module provides the main application entry point for the
 backend API service that interfaces between clients and the robot control system.
 """
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from backend.db.database import init_database
-from backend.api import auth, robot, skills, websocket, sessions
+from backend.api import auth, robot, skills, websocket, sessions, monitoring, debug
+from backend.api.auth import limiter
 
 
 @asynccontextmanager
@@ -31,13 +36,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# Add rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# CORS middleware - restrict origins via environment variable
+# Default to localhost for development, configure for production
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:8000,http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
@@ -57,6 +70,8 @@ app.include_router(robot.router)
 app.include_router(skills.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
+app.include_router(monitoring.router)
+app.include_router(debug.router)
 
 
 @app.get("/health")

@@ -22,6 +22,18 @@ class SkillDebugger {
             failedExecutions: 0,
             totalDuration: 0
         };
+        // Per-skill metrics
+        this.skillMetrics = {};
+        // MetaClaw learning status
+        this.metaclawStatus = {
+            connected: false,
+            learningMode: 'passive',
+            skillsLearned: 0,
+            lastUpdate: null
+        };
+        // Debugger state for step-through
+        this.debuggerEnabled = false;
+        this.debugBreakpoints = [];
     }
 
     init() {
@@ -35,7 +47,8 @@ class SkillDebugger {
             activeSkillsList: document.getElementById('activeSkillsList'),
             skillHistoryList: document.getElementById('skillHistoryList'),
             preconditionResults: document.getElementById('preconditionResults'),
-            performanceMetrics: document.getElementById('performanceMetrics')
+            performanceMetrics: document.getElementById('performanceMetrics'),
+            metaclawStatus: document.getElementById('metaclawStatus')
         };
     }
 
@@ -56,8 +69,55 @@ class SkillDebugger {
             skillSelect.addEventListener('change', async (e) => {
                 if (e.target.value) {
                     await this.loadSkillSchema(e.target.value);
+                    // Inspect parameters when skill selected
+                    this.inspectParameters({}, this.currentSkillSchema);
                 }
             });
+        }
+
+        // Debugger controls
+        const toggleDebuggerBtn = document.getElementById('toggleDebuggerBtn');
+        if (toggleDebuggerBtn) {
+            toggleDebuggerBtn.addEventListener('click', () => {
+                this.debuggerEnabled = !this.debuggerEnabled;
+                this.renderDebuggerStatus();
+                toggleDebuggerBtn.textContent = this.debuggerEnabled ? 'Disable Debugger' : 'Enable Debugger';
+            });
+        }
+
+        const stepBtn = document.getElementById('stepBtn');
+        if (stepBtn) {
+            stepBtn.addEventListener('click', () => {
+                this.handleDebuggerStep();
+            });
+        }
+
+        const continueBtn = document.getElementById('continueBtn');
+        if (continueBtn) {
+            continueBtn.addEventListener('click', () => {
+                this.handleDebuggerContinue();
+            });
+        }
+
+        // Listen for errors to log traces
+        this.api.on('error', (error) => {
+            this.logErrorTrace(error, 'API Error');
+        });
+    }
+
+    handleDebuggerStep() {
+        // Emit step event for skill execution
+        if (window.robotDashboard?.skillExecution) {
+            window.robotDashboard.skillExecution.debugStep();
+        }
+    }
+
+    handleDebuggerContinue() {
+        // Continue execution past breakpoints
+        this.debugBreakpoints = [];
+        this.renderDebuggerStatus();
+        if (window.robotDashboard?.skillExecution) {
+            window.robotDashboard.skillExecution.debugContinue();
         }
     }
 
@@ -125,6 +185,107 @@ class SkillDebugger {
         `;
 
         this.elements.performanceMetrics.innerHTML = html;
+    }
+
+    updateSkillMetrics(skillName, result, duration) {
+        if (!this.skillMetrics[skillName]) {
+            this.skillMetrics[skillName] = {
+                total: 0,
+                success: 0,
+                failed: 0,
+                totalDuration: 0
+            };
+        }
+
+        const m = this.skillMetrics[skillName];
+        m.total++;
+        m.totalDuration += duration || 0;
+        if (result?.status === 'SUCCESS' || result?.status === 'COMPLETED') {
+            m.success++;
+        } else if (result?.status === 'FAILED' || result?.status === 'ERROR') {
+            m.failed++;
+        }
+    }
+
+    renderSkillMetrics() {
+        const container = document.getElementById('skillMetricsTable');
+        if (!container) return;
+
+        const skills = Object.keys(this.skillMetrics);
+        if (skills.length === 0) {
+            container.innerHTML = '<div class="empty-state">No skill metrics yet</div>';
+            return;
+        }
+
+        const html = `
+            <table class="metrics-table">
+                <thead>
+                    <tr>
+                        <th>Skill</th>
+                        <th>Total</th>
+                        <th>Success</th>
+                        <th>Failed</th>
+                        <th>Rate</th>
+                        <th>Avg ms</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${skills.map(skill => {
+                        const m = this.skillMetrics[skill];
+                        const rate = m.total > 0 ? ((m.success / m.total) * 100).toFixed(1) : 0;
+                        const avg = m.total > 0 ? (m.totalDuration / m.total).toFixed(1) : 0;
+                        return `
+                            <tr>
+                                <td>${skill}</td>
+                                <td>${m.total}</td>
+                                <td class="success">${m.success}</td>
+                                <td class="error">${m.failed}</td>
+                                <td>${rate}%</td>
+                                <td>${avg}</td>
+                            </tr>
+                        `;
+                    }).join('')}
+                </tbody>
+            </table>
+        `;
+
+        container.innerHTML = html;
+    }
+
+    updateMetaclawStatus(status) {
+        this.metaclawStatus = { ...this.metaclawStatus, ...status, lastUpdate: Date.now() };
+        this.renderMetaclawStatus();
+    }
+
+    renderMetaclawStatus() {
+        const container = document.getElementById('metaclawStatus');
+        if (!container) return;
+
+        const status = this.metaclawStatus;
+        const statusClass = status.connected ? 'connected' : 'disconnected';
+        const statusIcon = status.connected ? '&#10004;' : '&#10008;';
+
+        const html = `
+            <div class="metaclaw-grid">
+                <div class="metaclaw-status ${statusClass}">
+                    <span class="status-icon">${statusIcon}</span>
+                    <span class="status-text">${status.connected ? 'Connected' : 'Disconnected'}</span>
+                </div>
+                <div class="metaclaw-info">
+                    <div class="info-item">
+                        <span class="label">Learning Mode:</span>
+                        <span class="value">${status.learningMode}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Skills Learned:</span>
+                        <span class="value">${status.skillsLearned}</span>
+                    </div>
+                    ${status.lastUpdate ? `<div class="info-item"><span class="label">Last Update:</span><span class="value">${new Date(status.lastUpdate).toLocaleTimeString()}</span></div>` : ''}
+                </div>
+            </div>
+        `;
+
+        container.innerHTML = html;
     }
 
     async loadSkillSchema(skillName) {
@@ -400,6 +561,10 @@ class SkillDebugger {
         // Update performance metrics
         this.updatePerformanceMetrics(entry.result, entry.duration);
 
+        // Update per-skill metrics
+        this.updateSkillMetrics(entry.skillName, entry.result, entry.duration);
+        this.renderSkillMetrics();
+
         this.renderSkillHistory();
     }
 
@@ -578,6 +743,164 @@ class SkillDebugger {
     clearHistory() {
         this.skillHistory = [];
         this.renderSkillHistory();
+    }
+
+    // Advanced Debugging: Step-through execution
+    enableDebugger(enabled) {
+        this.debuggerEnabled = enabled;
+        this.renderDebuggerStatus();
+    }
+
+    toggleBreakpoint(skillName, stepName) {
+        const bpKey = `${skillName}:${stepName}`;
+        const index = this.debugBreakpoints.indexOf(bpKey);
+        if (index === -1) {
+            this.debugBreakpoints.push(bpKey);
+        } else {
+            this.debugBreakpoints.splice(index, 1);
+        }
+        this.renderDebuggerStatus();
+        return this.debugBreakpoints.includes(bpKey);
+    }
+
+    hasBreakpoint(skillName, stepName) {
+        return this.debugBreakpoints.includes(`${skillName}:${stepName}`);
+    }
+
+    renderDebuggerStatus() {
+        const container = document.getElementById('debuggerStatus');
+        if (!container) return;
+
+        const html = `
+            <div class="debugger-status ${this.debuggerEnabled ? 'enabled' : 'disabled'}">
+                <span class="debugger-icon">${this.debuggerEnabled ? '&#9654;' : '&#9208;'}</span>
+                <span class="debugger-label">Debugger ${this.debuggerEnabled ? 'Enabled' : 'Disabled'}</span>
+                <span class="breakpoint-count">${this.debugBreakpoints.length} breakpoints</span>
+            </div>
+        `;
+        container.innerHTML = html;
+    }
+
+    // Advanced Debugging: Error trace visualization
+    logErrorTrace(error, context) {
+        const traceEntry = {
+            id: `trace_${Date.now()}`,
+            error: error,
+            context: context,
+            timestamp: Date.now(),
+            stackTrace: error.stack || null
+        };
+
+        if (!this.errorTraces) {
+            this.errorTraces = [];
+        }
+        this.errorTraces.unshift(traceEntry);
+
+        if (this.errorTraces.length > 20) {
+            this.errorTraces.pop();
+        }
+
+        this.renderErrorTraces();
+    }
+
+    renderErrorTraces() {
+        const container = document.getElementById('errorTraceList');
+        if (!container) return;
+
+        if (!this.errorTraces || this.errorTraces.length === 0) {
+            container.innerHTML = '<div class="empty-state">No error traces</div>';
+            return;
+        }
+
+        const html = this.errorTraces.map(trace => {
+            const date = new Date(trace.timestamp);
+            return `
+                <div class="error-trace-item">
+                    <div class="trace-header">
+                        <span class="trace-time">${date.toLocaleTimeString()}</span>
+                        <span class="trace-context">${trace.context || 'Unknown context'}</span>
+                    </div>
+                    <div class="trace-error">${trace.error?.message || trace.error}</div>
+                    ${trace.stackTrace ? `<pre class="trace-stack">${trace.stackTrace}</pre>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        container.innerHTML = html;
+    }
+
+    // Advanced Debugging: Parameter inspection
+    inspectParameters(params, schema) {
+        const inspection = {
+            timestamp: Date.now(),
+            params: params,
+            schema: schema,
+            issues: []
+        };
+
+        if (!params || !schema) return inspection;
+
+        // Validate parameter types
+        for (const [key, value] of Object.entries(params)) {
+            const expectedType = schema.inputs?.[key];
+            if (expectedType) {
+                const actualType = typeof value;
+                if (expectedType === 'float' && (actualType !== 'number' || isNaN(value))) {
+                    inspection.issues.push({
+                        param: key,
+                        severity: 'error',
+                        message: `Expected ${expectedType}, got ${actualType}`
+                    });
+                } else if (expectedType === 'string' && actualType !== 'string') {
+                    inspection.issues.push({
+                        param: key,
+                        severity: 'error',
+                        message: `Expected ${expectedType}, got ${actualType}`
+                    });
+                }
+            }
+        }
+
+        // Check for missing required params
+        for (const [key, type] of Object.entries(schema.inputs || {})) {
+            if (params[key] === undefined) {
+                inspection.issues.push({
+                    param: key,
+                    severity: 'warning',
+                    message: `Missing required parameter: ${key}`
+                });
+            }
+        }
+
+        this.renderParameterInspection(inspection);
+        return inspection;
+    }
+
+    renderParameterInspection(inspection) {
+        const container = document.getElementById('paramInspection');
+        if (!container) return;
+
+        const issuesHtml = inspection.issues.length > 0
+            ? inspection.issues.map(issue => `
+                <div class="inspection-issue ${issue.severity}">
+                    <span class="issue-param">${issue.param}</span>
+                    <span class="issue-message">${issue.message}</span>
+                </div>
+            `).join('')
+            : '<div class="inspection-ok">All parameters valid</div>';
+
+        const paramsHtml = Object.entries(inspection.params || {}).map(([k, v]) =>
+            `<div class="param-row"><span class="param-key">${k}</span><span class="param-value">${JSON.stringify(v)}</span></div>`
+        ).join('');
+
+        container.innerHTML = `
+            <div class="param-inspection">
+                <h4>Parameter Values</h4>
+                <div class="param-table">${paramsHtml}</div>
+                <h4>Issues (${inspection.issues.length})</h4>
+                ${issuesHtml}
+            </div>
+        `;
     }
 }
 

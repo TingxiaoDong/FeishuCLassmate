@@ -13,7 +13,14 @@ from passlib.context import CryptContext
 
 from backend.db.database import get_db
 
-SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
+# Security: JWT secret must be set via environment variable
+SECRET_KEY = os.environ.get("JWT_SECRET_KEY")
+if SECRET_KEY is None:
+    raise RuntimeError(
+        "JWT_SECRET_KEY environment variable must be set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(32))\""
+    )
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
@@ -81,7 +88,17 @@ def require_role(required_role: str):
 
 
 async def create_default_admin():
-    """Create default admin user if not exists."""
+    """Create default admin user if not exists.
+
+    Security: Admin password must be set via ADMIN_PASSWORD environment variable.
+    """
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    if admin_password is None:
+        raise RuntimeError(
+            "ADMIN_PASSWORD environment variable must be set for initial admin setup. "
+            "Set a strong password: export ADMIN_PASSWORD='your-secure-password'"
+        )
+
     async with get_db() as db:
         cursor = await db.execute(
             "SELECT id FROM users WHERE username = ?", ("admin",)
@@ -90,6 +107,6 @@ async def create_default_admin():
         if row is None:
             await db.execute(
                 "INSERT INTO users (id, username, hashed_password, role) VALUES (?, ?, ?, ?)",
-                (str(uuid.uuid4()), "admin", get_password_hash("admin123"), "admin")
+                (str(uuid.uuid4()), "admin", get_password_hash(admin_password), "admin")
             )
             await db.commit()

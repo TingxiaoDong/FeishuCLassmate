@@ -26,6 +26,9 @@ from src.skill.skill_schemas import (
     list_skills,
     SkillSchema,
     SkillType,
+    SkillStatus,
+    SkillRequest,
+    SkillResponse,
 )
 from src.skill.skill_implementations import (
     GraspSkill,
@@ -75,6 +78,9 @@ __all__ = [
     "list_skills",
     "SkillSchema",
     "SkillType",
+    "SkillStatus",
+    "SkillRequest",
+    "SkillResponse",
     # Implementations
     "GraspSkill",
     "MoveToSkill",

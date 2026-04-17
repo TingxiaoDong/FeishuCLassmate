@@ -15,6 +15,7 @@ class RobotDashboard {
         this.skillExecution = null;
         this.skillDebugger = null;
         this.configManager = null;
+        this.monitoring = null;
         this.eventLogEntries = [];
         this.maxLogEntries = 50;
 
@@ -47,6 +48,10 @@ class RobotDashboard {
         this.skillDebugger = new SkillDebugger(this.api);
         this.skillDebugger.init();
 
+        // Initialize monitoring
+        this.monitoring = new Monitoring(this.api);
+        this.monitoring.init();
+
         // Setup event listeners
         this.setupEventListeners();
 
@@ -61,6 +66,9 @@ class RobotDashboard {
 
         // Show skills panel
         this.showSkillsPanel();
+
+        // Show monitoring panel
+        this.showMonitoringPanel();
 
         // Try to connect
         this.connect();
@@ -475,6 +483,20 @@ class RobotDashboard {
         const skillsPanel = document.getElementById('skillsPanel');
         if (skillsPanel) {
             skillsPanel.classList.remove('visible');
+        }
+    }
+
+    showMonitoringPanel() {
+        const monitoringPanel = document.getElementById('monitoringPanel');
+        if (monitoringPanel) {
+            monitoringPanel.classList.add('visible');
+        }
+    }
+
+    hideMonitoringPanel() {
+        const monitoringPanel = document.getElementById('monitoringPanel');
+        if (monitoringPanel) {
+            monitoringPanel.classList.remove('visible');
         }
     }
 

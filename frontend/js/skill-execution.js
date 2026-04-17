@@ -88,6 +88,20 @@ class SkillExecution {
         };
 
         this.executing = false;
+        this.debugPaused = false;
+    }
+
+    // Debug mode step-through support
+    debugStep() {
+        this.debugPaused = false;
+        // Resume execution for one step
+        console.log('Debug: Step executed');
+    }
+
+    debugContinue() {
+        this.debugPaused = false;
+        this.debugBreakpoints = [];
+        console.log('Debug: Continued past breakpoints');
     }
 
     init() {

@@ -371,32 +371,69 @@ MOVE_TO_SCHEMA.safety_constraints = [
 
 ## MetaClaw Integration
 
-### Architecture
+### Architecture - Dual Adapter Pattern
+
+The MetaClaw integration uses a dual adapter pattern to maintain separation of concerns:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        MetaClaw                             │
-│              Continual Learning Engine                       │
-│   ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│   │ Skill       │  │ Performance│  │ Adaptation          │  │
-│   │ Evaluator   │  │ Tracker    │  │ Engine              │  │
-│   └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└─────────────────────────────┬───────────────────────────────┘
-                              │ Suggest improvements
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      PLANNER LAYER                           │
-│         Receives skill suggestions, validates, deploys       │
-└─────────────────────────────────────────────────────────────┘
+Planner Layer
+    └── src/planner/metaclaw_adapter.py    # Thin interface to MetaClaw
+            │
+            └── src/metaclaw/              # Core MetaClaw integration
+                ├── robot_claw_adapter.py  # Main MetaClaw bridge
+                ├── skill_executor.py      # Precondition validation + execution
+                ├── performance_tracker.py # Metrics + reward computation
+                ├── prm_scorer.py         # Process reward model
+                └── skill_converter.py    # SkillSchema ↔ SKILL.md conversion
+```
+
+**Why Dual Adapter?**
+- `src/planner/metaclaw_adapter.py`: What PLANNER sees - thin adapter for reporting executions and receiving suggestions
+- `src/metaclaw/`: Heavy integration logic - PerformanceTracker, PRMScorer, SkillConverter - kept encapsulated and reusable
+- Planner doesn't need to know MetaClaw internals
+
+### Data Flow
+
+```
+SkillExecutor.execute(skill)
+    → RobotAPI.execute_skill()
+    → ExecutionOutcome recorded
+    → PerformanceTracker records
+    → RobotSample created for MetaClaw
+    → if success_rate < 0.4:
+        → SkillEvolver.evolve(failed_samples)
+        → Suggestion added to pending
 ```
 
 ### Integration Points
 
 | Interface | Direction | Purpose |
 |-----------|-----------|---------|
-| MetaClaw → Planner | Suggest | Propose skill parameter improvements |
-| Planner → MetaClaw | Feedback | Send execution results for learning |
-| MetaClaw → Skill | Review | Submit new skill versions for validation |
+| Planner → MetaClaw | Feedback | Send execution results via `report_execution()` |
+| MetaClaw → Planner | Suggest | Receive suggestions via `request_skill_suggestions()` |
+| MetaClaw → Skill | Review | New skills validated before deployment |
+
+### Skill Export Pipeline
+
+Robot skills are exported to MetaClaw SKILL.md format:
+
+```
+SKILL_REGISTRY (src/skill/skill_schemas.py)
+    ↓ RobotSkillConverter.export_all_skills()
+MetaClaw/memory_data/skills/robotics/
+    ├── grasp/SKILL.md
+    ├── move_to/SKILL.md
+    ├── approach_and_grasp/SKILL.md  (Phase 2 composite)
+    └── pick_and_place/SKILL.md     (Phase 2 composite)
+```
+
+**Category Mapping:**
+| SkillType | MetaClaw Category |
+|-----------|-------------------|
+| MOTION | robotics/motion |
+| MANIPULATION | robotics/manipulation |
+| SENSING | robotics/sensing |
+| COMPOSITE | robotics/composite |
 
 ### Critical Constraint
 
@@ -423,7 +460,15 @@ FeishuCLassmate/
 │   ├── planner/              # OpenClaw integration
 │   │   ├── __init__.py
 │   │   ├── planner.py        # Task decomposition
-│   │   └── metaclaw_adapter.py
+│   │   └── metaclaw_adapter.py  # Planner ↔ MetaClaw interface
+│   │
+│   ├── metaclaw/            # MetaClaw integration layer
+│   │   ├── __init__.py
+│   │   ├── robot_claw_adapter.py  # Main MetaClaw bridge
+│   │   ├── skill_executor.py      # Precondition validation
+│   │   ├── performance_tracker.py # Metrics + rewards
+│   │   ├── prm_scorer.py         # Process reward model
+│   │   └── skill_converter.py     # Schema ↔ SKILL.md
 │   │
 │   ├── skill/                # Skill implementations
 │   │   ├── __init__.py

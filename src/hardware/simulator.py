@@ -23,6 +23,7 @@ from src.shared.interfaces import (
     RobotState,
 )
 from src.shared.world_state import WorldState, RobotState as WS_RobotState, Pose
+from src.robot_api.collision import CollisionDetector, SafetyChecker, Vector3, RobotLink
 
 
 class RobotSimulator(IRobotAPI):
@@ -30,9 +31,20 @@ class RobotSimulator(IRobotAPI):
     Simulated robot implementing IRobotAPI interface.
 
     Tracks internal state and simulates motion without real hardware.
+    Performance optimized with cached pose dict and in-place updates.
     """
 
-    def __init__(self):
+    __slots__ = ('_joint_positions', '_end_effector_pose', '_gripper_width',
+                 '_gripper_force', '_state', '_sensor_data', '_command_count',
+                 '_cached_pose_dict', '_collision_detector', '_safety_checker',
+                 '_safety_enabled')
+
+    # Pre-allocated constants for hot paths
+    _ZERO_JOINTS: list[float] = [0.0] * 6
+    _EMPTY_OBJECTS: list = []
+    _EMPTY_ENV: None = None
+
+    def __init__(self, safety_enabled: bool = True):
         # Internal robot state
         self._joint_positions: list[float] = [0.0] * 6
         self._end_effector_pose: Pose = Pose(x=0.0, y=0.0, z=0.0)
@@ -41,6 +53,15 @@ class RobotSimulator(IRobotAPI):
         self._state: RobotState = RobotState.IDLE
         self._sensor_data: dict = {}
         self._command_count: int = 0
+        # Cached pose dict for avoid repeated allocations
+        self._cached_pose_dict: dict = {
+            "x": 0.0, "y": 0.0, "z": 0.0,
+            "rx": 0.0, "ry": 0.0, "rz": 0.0
+        }
+        # Safety monitoring components
+        self._collision_detector: CollisionDetector = CollisionDetector()
+        self._safety_checker: SafetyChecker = SafetyChecker(self._collision_detector)
+        self._safety_enabled: bool = safety_enabled
 
     def move_joints(self, joints: list[float], speed: float) -> RobotStatus:
         """Move robot to specified joint positions."""
@@ -58,10 +79,25 @@ class RobotSimulator(IRobotAPI):
                 message="Robot is in error state"
             )
 
+        # Safety check before execution
+        is_safe, safety_msg = self._check_safety(joints)
+        if not is_safe:
+            self._state = RobotState.ERROR
+            return RobotStatus(
+                command_id=command_id,
+                state=RobotState.ERROR,
+                position=self._pose_to_dict(),
+                joints=self._joint_positions,
+                gripper_state=self._gripper_width,
+                sensor_data=self._sensor_data,
+                message=f"Safety check failed: {safety_msg}"
+            )
+
         self._state = RobotState.EXECUTING
 
-        # Simulate joint movement
-        self._joint_positions = joints.copy()
+        # Simulate joint movement - in-place update for speed
+        for i, v in enumerate(joints):
+            self._joint_positions[i] = v
 
         # Calculate end-effector pose from joints (simplified kinematics)
         self._update_end_effector_from_joints()
@@ -137,6 +173,23 @@ class RobotSimulator(IRobotAPI):
                 message="Robot is in error state"
             )
 
+        # Safety check for target position
+        x = target.get("x", self._end_effector_pose.x)
+        y = target.get("y", self._end_effector_pose.y)
+        z = target.get("z", self._end_effector_pose.z)
+        is_safe, safety_msg = self._check_workspace_safety(x, y, z)
+        if not is_safe:
+            self._state = RobotState.ERROR
+            return RobotStatus(
+                command_id=command_id,
+                state=RobotState.ERROR,
+                position=self._pose_to_dict(),
+                joints=self._joint_positions,
+                gripper_state=self._gripper_width,
+                sensor_data=self._sensor_data,
+                message=f"Safety check failed: {safety_msg}"
+            )
+
         self._state = RobotState.EXECUTING
 
         # Update end-effector position in a straight line
@@ -205,8 +258,8 @@ class RobotSimulator(IRobotAPI):
         return WorldState(
             timestamp=time.time(),
             robot=ws_robot,
-            objects=[],
-            environment=None
+            objects=self._EMPTY_OBJECTS,
+            environment=self._EMPTY_ENV
         )
 
     def execute_skill(self, skill_name: str, parameters: dict) -> RobotStatus:
@@ -285,6 +338,7 @@ class RobotSimulator(IRobotAPI):
     def emergency_stop(self) -> RobotStatus:
         """Trigger emergency stop."""
         self._state = RobotState.ERROR
+        self._safety_checker.trigger_emergency_stop()
         return RobotStatus(
             command_id="emergency_stop",
             state=RobotState.ERROR,
@@ -297,16 +351,28 @@ class RobotSimulator(IRobotAPI):
 
     def reset(self) -> RobotStatus:
         """Reset robot to default state."""
-        self._joint_positions = [0.0] * 6
-        self._end_effector_pose = Pose(x=0.0, y=0.0, z=0.0)
+        # Use pre-allocated constant and clear cached dict
+        self._joint_positions = self._ZERO_JOINTS.copy()
+        self._end_effector_pose.x = 0.0
+        self._end_effector_pose.y = 0.0
+        self._end_effector_pose.z = 0.0
         self._gripper_width = 0.0
         self._gripper_force = 0.0
         self._state = RobotState.IDLE
+        # Reset emergency stop
+        self._safety_checker.reset_emergency_stop()
+        # Reset cached pose dict
+        self._cached_pose_dict["x"] = 0.0
+        self._cached_pose_dict["y"] = 0.0
+        self._cached_pose_dict["z"] = 0.0
+        self._cached_pose_dict["rx"] = 0.0
+        self._cached_pose_dict["ry"] = 0.0
+        self._cached_pose_dict["rz"] = 0.0
 
         return RobotStatus(
             command_id="reset",
             state=RobotState.IDLE,
-            position=self._pose_to_dict(),
+            position=self._cached_pose_dict,
             joints=self._joint_positions,
             gripper_state=self._gripper_width,
             sensor_data=self._sensor_data,
@@ -317,16 +383,63 @@ class RobotSimulator(IRobotAPI):
     # Internal helper methods
     # ============================================================
 
+    def _get_robot_links(self) -> list[RobotLink]:
+        """Create robot links from current joint positions for collision checking."""
+        links = []
+        # Simplified robot link representation based on joint angles
+        # In reality this would use proper robot geometry
+        for i in range(len(self._joint_positions) - 1):
+            start_x = sum(self._joint_positions[:i+1]) * 0.1 if i > 0 else 0.0
+            end_x = sum(self._joint_positions[:i+2]) * 0.1
+            links.append(RobotLink(
+                name=f"link_{i}",
+                start_position=Vector3(start_x, 0.0, 0.0),
+                end_position=Vector3(end_x, 0.0, 0.0),
+                radius=0.05
+            ))
+        return links
+
+    def _check_safety(self, target_positions: list[float] | None = None) -> tuple[bool, str]:
+        """Run safety check before command execution."""
+        if not self._safety_enabled:
+            return True, ""
+
+        if self._safety_checker.emergency_stop_active:
+            return False, "Emergency stop is active"
+
+        # Create temporary joint positions for safety check
+        check_positions = target_positions if target_positions else self._joint_positions
+        temp_joints = self._joint_positions.copy()
+        for i, v in enumerate(check_positions):
+            if i < len(self._joint_positions):
+                self._joint_positions[i] = v
+
+        self._collision_detector.set_robot_links(self._get_robot_links())
+        has_collision, collisions = self._collision_detector.check_collision()
+
+        # Restore joint positions
+        self._joint_positions = temp_joints
+
+        if has_collision:
+            return False, "; ".join(collisions)
+
+        return True, ""
+
+    def _check_workspace_safety(self, x: float, y: float, z: float) -> tuple[bool, str]:
+        """Check if target position is within workspace bounds."""
+        if not self._safety_enabled:
+            return True, ""
+        return self._safety_checker.validate_workspace_target(x, y, z)
+
     def _pose_to_dict(self) -> dict:
-        """Convert pose to dictionary."""
-        return {
-            "x": self._end_effector_pose.x,
-            "y": self._end_effector_pose.y,
-            "z": self._end_effector_pose.z,
-            "rx": self._end_effector_pose.rx,
-            "ry": self._end_effector_pose.ry,
-            "rz": self._end_effector_pose.rz
-        }
+        """Convert pose to dictionary (cached, in-place update)."""
+        self._cached_pose_dict["x"] = self._end_effector_pose.x
+        self._cached_pose_dict["y"] = self._end_effector_pose.y
+        self._cached_pose_dict["z"] = self._end_effector_pose.z
+        self._cached_pose_dict["rx"] = self._end_effector_pose.rx
+        self._cached_pose_dict["ry"] = self._end_effector_pose.ry
+        self._cached_pose_dict["rz"] = self._end_effector_pose.rz
+        return self._cached_pose_dict
 
     def _update_end_effector_from_joints(self) -> None:
         """Simplified forward kinematics: update end-effector pose from joint positions."""
