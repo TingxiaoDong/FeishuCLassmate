@@ -126,8 +126,10 @@ GRASP_SCHEMA = SkillSchema(
     preconditions=[
         "robot.gripper_width > 0",
         "object with object_id exists in world_state",
+        "object not in Obstacle list",
         "object.state == VISIBLE",
         "target position is within workspace bounds",
+        "robot.state == IDLE or robot.state == EXECUTING",
     ],
     effects=[
         "object.state == GRASPED",
@@ -151,7 +153,7 @@ MOVE_TO_SCHEMA = SkillSchema(
         "target position is within workspace bounds",
         "path is collision-free (no Obstacles in way)",
         "robot is not holding object that would collide",
-        "motion_type is valid (linear, joint, pose)",
+        "robot.motion_type is valid (linear, joint, pose)",
     ],
     effects=[
         "robot.end_effector_pose matches target pose",
@@ -217,9 +219,9 @@ ROTATE_SCHEMA = SkillSchema(
     skill_type=SkillType.MOTION,
     inputs=RotateInput,
     preconditions=[
-        "axis is valid (x, y, or z)",
-        "angle is within joint limits",
-        "rotation path is collision-free",
+        "robot.axis is valid (x, y, or z)",
+        "robot.angle is within joint limits",
+        "robot.rotation path is collision-free",
     ],
     effects=[
         "robot.end_effector_pose rz updated by angle (for z-axis rotation)",
@@ -228,7 +230,7 @@ ROTATE_SCHEMA = SkillSchema(
     safety_constraints=[
         "angle must be within safe joint limits",
         "rotation speed must be controlled",
-        "axis must be valid (x, y, z)",
+        "robot.axis must be valid (x, y, z)",
         "must not cause self-collision during rotation",
     ],
 )
@@ -248,7 +250,7 @@ STOP_SCHEMA = SkillSchema(
     ],
     safety_constraints=[
         "emergency stop must always be available",
-        "controlled stop must decelerate safely",
+        "speed must be within safe limits during deceleration",
         "stop action must complete within 100ms",
     ],
 )

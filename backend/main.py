@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.db.database import init_database
-from backend.api import auth, robot, skills, websocket, sessions
+from backend.api import auth, robot, skills, websocket, sessions, pipeline
 
 
 @asynccontextmanager
@@ -57,6 +57,7 @@ app.include_router(robot.router)
 app.include_router(skills.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
+app.include_router(pipeline.router)
 
 
 @app.get("/health")

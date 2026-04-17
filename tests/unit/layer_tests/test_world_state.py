@@ -112,12 +112,14 @@ class TestObstacle:
     """Tests for Obstacle dataclass."""
 
     def test_obstacle_required_fields(self):
-        """Obstacle requires id, pose, and shape."""
+        """Obstacle requires id, pose, shape, and size."""
         pose = Pose(x=0.1, y=0.2, z=0.3)
-        obstacle = Obstacle(id="obs1", pose=pose, shape="box")
+        size = Size3D(x=0.1, y=0.1, z=0.1)
+        obstacle = Obstacle(id="obs1", pose=pose, shape="box", size=size)
         assert obstacle.id == "obs1"
         assert obstacle.pose == pose
         assert obstacle.shape == "box"
+        assert obstacle.size == size
 
 
 class TestWorkspaceBounds:
@@ -151,7 +153,8 @@ class TestEnvironment:
     def test_environment_with_obstacles(self):
         """Environment should accept obstacles list."""
         pose = Pose(x=0.1, y=0.2, z=0.0)
-        obstacle = Obstacle(id="obs1", pose=pose, shape="box")
+        size = Size3D(x=0.1, y=0.1, z=0.1)
+        obstacle = Obstacle(id="obs1", pose=pose, shape="box", size=size)
         env = Environment(obstacles=[obstacle])
         assert len(env.obstacles) == 1
         assert env.obstacles[0].id == "obs1"

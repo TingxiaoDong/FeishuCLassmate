@@ -176,7 +176,7 @@ class TestMoveToSkill:
 
     def test_move_to_motion_type_constraint(self):
         """move_to preconditions should specify valid motion_type."""
-        motion_type_constraint = "motion_type is valid (linear, joint, pose)"
+        motion_type_constraint = "robot.motion_type is valid (linear, joint, pose)"
         assert motion_type_constraint in MOVE_TO_SCHEMA.preconditions
 
 
@@ -240,7 +240,7 @@ class TestRotateSkill:
 
     def test_rotate_axis_constraint(self):
         """rotate preconditions should specify valid axis (x, y, z)."""
-        axis_constraint = "axis is valid (x, y, or z)"
+        axis_constraint = "robot.axis is valid (x, y, or z)"
         assert axis_constraint in ROTATE_SCHEMA.preconditions
 
 

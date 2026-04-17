@@ -6,7 +6,11 @@ Integrates with MetaClaw for continual learning.
 """
 
 from .metaclaw_adapter import PlannerMetaClawAdapter
+from .simple_planner import SimplePlanner
+from .execution_pipeline import ExecutionPipeline
 
 __all__ = [
     "PlannerMetaClawAdapter",
+    "SimplePlanner",
+    "ExecutionPipeline",
 ]
