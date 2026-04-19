@@ -1,98 +1,11 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
+node_modules/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual environments
-venv/
-ENV/
-env/
-.venv/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.nox/
-
-# Environment variables
 .env
 .env.local
-*.pem
-*.key
-
-# Logs
 *.log
-logs/
-
-# Node (for frontend)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build artifacts
-*.o
-*.a
-*.so
-*.dylib
-build/
-dist/
-*.war
-*.jar
-
-# Temporary files
-*.tmp
-*.bak
-*.cache
-
-# Credentials and secrets
-credentials.json
-secrets.json
-*.secret
-config-secure*
-
-# Robot-specific (may contain calibration data)
-robot_config/
-calibration_data/
-*.calib
-
-# Documentation builds
-site/
-*.html
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Database
-*.db
-
-# Records and logs
-records/
-backend/db/*.db
+.DS_Store
+.vitest-cache/
+temi-sidecar/.venv/
+temi-sidecar/__pycache__/
+temi-sidecar/**/__pycache__/
+.local/

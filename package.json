@@ -1,0 +1,68 @@
+{
+  "name": "feishu-classmate",
+  "version": "0.1.0",
+  "description": "OpenClaw extension for the 飞书同学 lab assistant (Temi + Feishu + MetaClaw)",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    }
+  },
+  "files": [
+    "dist/",
+    "skills/",
+    "temi-sidecar/",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.60.0",
+    "@sinclair/typebox": "0.34.48",
+    "node-cron": "^4.2.1",
+    "zod": "^4.3.6"
+  },
+  "peerDependencies": {
+    "@larksuite/openclaw-lark": ">=2026.4.1",
+    "openclaw": ">=2026.4.10"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": false
+    },
+    "@larksuite/openclaw-lark": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "@types/node-cron": "^3.0.11",
+    "openclaw": "^2026.4.10",
+    "prettier": "^3.8.1",
+    "tsdown": "^0.21.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.mjs"
+    ],
+    "install": {
+      "npmSpec": "feishu-classmate",
+      "localPath": "extensions/feishu-classmate"
+    }
+  }
+}
