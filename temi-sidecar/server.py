@@ -9,6 +9,12 @@ TEMI_MOCK     If set to any non-empty, non-"0" value, run in mock mode from star
 TEMI_IP       Temi robot IP address (required in real mode).
 TEMI_PORT     Temi WebSocket port (default: 8175).
 SIDECAR_PORT  Port this HTTP server listens on (default: 8091; used by run block only).
+TEMI_WOZ_PRELAUNCH          Enable adb prelaunch before WS connect (default: 1).
+TEMI_ADB_COMMAND            adb executable path/name (default: adb).
+TEMI_ADB_PORT               adb TCP port on Temi (default: 5555).
+TEMI_WOZ_PACKAGE            WOZ app package name (default: com.cdi.temiwoz.debug).
+TEMI_WOZ_ACTIVITY           WOZ launcher activity (default: com.cdi.temiwoz.MainActivity).
+TEMI_WOZ_PRELAUNCH_WAIT_S   Wait seconds after am start before WS connect (default: 2.0).
 LOG_LEVEL     Python logging level string, e.g. DEBUG / INFO / WARNING (default: INFO).
 """
 
@@ -45,6 +51,13 @@ logger = logging.getLogger("temi-sidecar")
 TEMI_IP: str = os.getenv("TEMI_IP", "")
 TEMI_PORT: int = int(os.getenv("TEMI_PORT", "8175"))
 SIDECAR_PORT: int = int(os.getenv("SIDECAR_PORT", "8091"))
+TEMI_ADB_COMMAND: str = os.getenv("TEMI_ADB_COMMAND", "adb")
+TEMI_ADB_PORT: int = int(os.getenv("TEMI_ADB_PORT", "5555"))
+TEMI_WOZ_PACKAGE: str = os.getenv("TEMI_WOZ_PACKAGE", "com.cdi.temiwoz.debug")
+TEMI_WOZ_ACTIVITY: str = os.getenv("TEMI_WOZ_ACTIVITY", "com.cdi.temiwoz.MainActivity")
+TEMI_WOZ_PRELAUNCH_WAIT_S: float = float(os.getenv("TEMI_WOZ_PRELAUNCH_WAIT_S", "2.0"))
+_woz_prelaunch_env = os.getenv("TEMI_WOZ_PRELAUNCH", "1").strip().lower()
+TEMI_WOZ_PRELAUNCH: bool = _woz_prelaunch_env not in {"0", "false", "no", "off"}
 
 _mock_env = os.getenv("TEMI_MOCK", "")
 _FORCE_MOCK: bool = bool(_mock_env and _mock_env != "0")
@@ -82,7 +95,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _state.mock_mode = True
     else:
         logger.info("Connecting to Temi at %s:%d …", TEMI_IP, TEMI_PORT)
-        _state.client = TemiWebSocketClient(TEMI_IP, TEMI_PORT)
+        _state.client = TemiWebSocketClient(
+            TEMI_IP,
+            TEMI_PORT,
+            prelaunch_woz=TEMI_WOZ_PRELAUNCH,
+            adb_command=TEMI_ADB_COMMAND,
+            adb_port=TEMI_ADB_PORT,
+            woz_package=TEMI_WOZ_PACKAGE,
+            woz_activity=TEMI_WOZ_ACTIVITY,
+            prelaunch_wait_s=TEMI_WOZ_PRELAUNCH_WAIT_S,
+        )
         ok = await _state.client.connect()
         if ok:
             _state.connected = True

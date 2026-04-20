@@ -84,9 +84,26 @@ class TemiWebSocketClient:
         await client.disconnect()
     """
 
-    def __init__(self, ip: str, port: int = 8175) -> None:
+    def __init__(
+        self,
+        ip: str,
+        port: int = 8175,
+        *,
+        prelaunch_woz: bool = True,
+        adb_command: str = "adb",
+        adb_port: int = 5555,
+        woz_package: str = "com.cdi.temiwoz.debug",
+        woz_activity: str = "com.cdi.temiwoz.MainActivity",
+        prelaunch_wait_s: float = 2.0,
+    ) -> None:
         self._ip = ip
         self._port = port
+        self._prelaunch_woz = prelaunch_woz
+        self._adb_command = adb_command
+        self._adb_port = adb_port
+        self._woz_package = woz_package
+        self._woz_activity = woz_activity
+        self._prelaunch_wait_s = max(0.0, prelaunch_wait_s)
         self._ws: Any = None  # websockets.WebSocketClientProtocol
         self._listener_task: asyncio.Task[None] | None = None
         # Pending response futures keyed by command type
@@ -96,10 +113,63 @@ class TemiWebSocketClient:
     # Connection management
     # ------------------------------------------------------------------
 
+    async def _run_adb(self, *args: str, timeout_s: float = 10.0) -> bool:
+        """Run one adb command and return True on zero exit code."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                self._adb_command,
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            logger.warning("[Temi] adb command not found: %s", self._adb_command)
+            return False
+        except OSError as exc:
+            logger.warning("[Temi] failed to spawn adb: %s", exc)
+            return False
+
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            logger.warning("[Temi] adb timed out: %s %s", self._adb_command, " ".join(args))
+            return False
+
+        out_text = (stdout or b"").decode("utf-8", errors="ignore").strip()
+        err_text = (stderr or b"").decode("utf-8", errors="ignore").strip()
+        if proc.returncode != 0:
+            logger.warning(
+                "[Temi] adb failed (%s): %s %s",
+                proc.returncode,
+                out_text,
+                err_text,
+            )
+            return False
+
+        if out_text:
+            logger.info("[Temi] adb output: %s", out_text)
+        return True
+
+    async def _prelaunch_woz_app(self) -> None:
+        """Bring WOZ app to foreground before opening WebSocket."""
+        if not self._prelaunch_woz:
+            return
+
+        target = f"{self._ip}:{self._adb_port}"
+        component = f"{self._woz_package}/{self._woz_activity}"
+        logger.info("[Temi] prelaunch WOZ app via adb before WS connect")
+        await self._run_adb("connect", target, timeout_s=10.0)
+        await self._run_adb("shell", "am", "start", "-n", component, timeout_s=10.0)
+        if self._prelaunch_wait_s > 0:
+            await asyncio.sleep(self._prelaunch_wait_s)
+
     async def connect(self) -> bool:
         """Open WebSocket connection to Temi.  Returns True on success."""
         uri = f"ws://{self._ip}:{self._port}"
         try:
+            await self._prelaunch_woz_app()
             self._ws = await websockets.connect(uri, ping_interval=None)
             self._listener_task = asyncio.create_task(self._listen())
             logger.info("Connected to Temi at %s", uri)

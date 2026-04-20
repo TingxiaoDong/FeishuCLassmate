@@ -50,6 +50,12 @@ pip install -e ".[dev]"
 | `TEMI_PORT`   | `8175`   | Temi WebSocket port                                               |
 | `SIDECAR_PORT`| `8091`   | Port this HTTP server binds to                                    |
 | `TEMI_MOCK`   | _(none)_ | Set to any non-empty, non-`0` value to force mock mode            |
+| `TEMI_WOZ_PRELAUNCH` | `1` | Prelaunch WOZ app via adb before each WS connect (`0` to disable) |
+| `TEMI_ADB_COMMAND` | `adb` | adb executable path/name                                           |
+| `TEMI_ADB_PORT` | `5555` | adb TCP port on Temi                                               |
+| `TEMI_WOZ_PACKAGE` | `com.cdi.temiwoz.debug` | WOZ app package name                              |
+| `TEMI_WOZ_ACTIVITY` | `com.cdi.temiwoz.MainActivity` | WOZ launcher activity                |
+| `TEMI_WOZ_PRELAUNCH_WAIT_S` | `2.0` | Wait time (seconds) after `am start` before WS connect |
 | `LOG_LEVEL`   | `INFO`   | Python logging level (`DEBUG` / `INFO` / `WARNING` / `ERROR`)    |
 
 ---
@@ -65,6 +71,14 @@ TEMI_IP=192.168.1.100 uvicorn server:app --host 0.0.0.0 --port 8091
 If the robot is unreachable at startup, the sidecar logs a warning and
 **automatically falls back to mock mode** so the plugin remains functional
 during development.
+
+In real mode startup, the sidecar now runs this prelaunch flow before opening
+`ws://TEMI_IP:8175`:
+
+1. `adb connect TEMI_IP:TEMI_ADB_PORT`
+2. `adb shell am start -n TEMI_WOZ_PACKAGE/TEMI_WOZ_ACTIVITY`
+3. sleep `TEMI_WOZ_PRELAUNCH_WAIT_S`
+4. open WebSocket
 
 ### Mock mode (no robot needed)
 
