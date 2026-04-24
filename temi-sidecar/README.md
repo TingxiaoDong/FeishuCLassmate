@@ -56,6 +56,7 @@ pip install -e ".[dev]"
 | `TEMI_WOZ_PACKAGE` | `com.cdi.temiwoz.debug` | WOZ app package name                              |
 | `TEMI_WOZ_ACTIVITY` | `com.cdi.temiwoz.MainActivity` | WOZ launcher activity                |
 | `TEMI_WOZ_PRELAUNCH_WAIT_S` | `2.0` | Wait time (seconds) after `am start` before WS connect |
+| `TEMI_IDLE_TIMEOUT_S` | `300` | Auto-exit sidecar when no control command is received within this many seconds (`0` to disable) |
 | `LOG_LEVEL`   | `INFO`   | Python logging level (`DEBUG` / `INFO` / `WARNING` / `ERROR`)    |
 
 ---
@@ -80,6 +81,12 @@ In real mode startup, the sidecar now runs this prelaunch flow before opening
 3. sleep `TEMI_WOZ_PRELAUNCH_WAIT_S`
 4. open WebSocket
 
+In real mode, if no control command (`/goto`, `/speak`, `/stop`, etc.) arrives
+for `TEMI_IDLE_TIMEOUT_S` seconds (default 300), the sidecar will:
+
+1. close the Temi WebSocket connection
+2. terminate the sidecar process automatically
+
 ### Mock mode (no robot needed)
 
 ```bash
@@ -96,6 +103,11 @@ TEMI_IP=192.168.1.100 python server.py
 
 ## API Reference & curl Examples
 
+The sidecar now exposes both:
+
+- **Core classmate endpoints** (`/goto`, `/speak`, `/stop`, `/status`, etc.)
+- **Extended WOZ-compatible controls** (`/ask`, `/turn`, `/tilt`, `/open-url`, location CRUD, detection/track toggles, etc.)
+
 ### `GET /` — health check
 
 ```bash
@@ -110,6 +122,20 @@ curl http://localhost:8091/status
 # {"connected":false,"battery":87,"position":{"x":1.2,"y":0.5},"is_moving":false,"mock":true}
 ```
 
+### `GET /contacts`
+
+```bash
+curl http://localhost:8091/contacts
+# {"ok":true,"contacts":[...],"mock":false}
+```
+
+### `GET /detection-mode/check`
+
+```bash
+curl http://localhost:8091/detection-mode/check
+# {"ok":true,"value":true,"mock":false}
+```
+
 ### `POST /goto`
 
 ```bash
@@ -118,9 +144,6 @@ curl -X POST http://localhost:8091/goto \
   -d '{"location":"入口"}'
 # {"ok":true,"message":"(mock) Temi 已导航到 入口","mock":true}
 ```
-
-English location names are mapped to Chinese automatically (e.g. `entrance` → `入口`,
-`kitchen` → `厨房`, `charging station` → `充电桩`).
 
 ### `POST /speak`
 
@@ -133,6 +156,15 @@ curl -X POST http://localhost:8091/speak \
 
 `voice` is `"friendly"` (default) or `"professional"`.
 
+### `POST /ask`
+
+```bash
+curl -X POST http://localhost:8091/ask \
+  -H "Content-Type: application/json" \
+  -d '{"sentence":"请问需要什么帮助"}'
+# {"ok":true,"reply":"...","mock":false}
+```
+
 ### `POST /stop`
 
 ```bash
@@ -140,6 +172,108 @@ curl -X POST http://localhost:8091/stop \
   -H "Content-Type: application/json" \
   -d '{"immediate":true}'
 # {"ok":true,"mock":true}
+```
+
+### `POST /stop-movement`
+
+```bash
+curl -X POST http://localhost:8091/stop-movement
+# {"ok":true,"mock":false}
+```
+
+### `POST /open-url`
+
+```bash
+curl -X POST http://localhost:8091/open-url \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.baidu.com","command":"openURL"}'
+# {"ok":true,"mock":false}
+```
+
+`command` supports `"openURL"` and `"interface"`.
+
+### `POST /turn`
+
+```bash
+curl -X POST http://localhost:8091/turn \
+  -H "Content-Type: application/json" \
+  -d '{"angle":90}'
+# {"ok":true,"mock":false}
+```
+
+### `POST /tilt`
+
+```bash
+curl -X POST http://localhost:8091/tilt \
+  -H "Content-Type: application/json" \
+  -d '{"angle":20}'
+# {"ok":true,"mock":false}
+```
+
+### `POST /call`
+
+```bash
+curl -X POST http://localhost:8091/call \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"<contact-id>"}'
+# {"ok":true,"mock":false}
+```
+
+### `POST /wakeup`
+
+```bash
+curl -X POST http://localhost:8091/wakeup
+# {"ok":true,"mock":false}
+```
+
+### `POST /save-location`
+
+```bash
+curl -X POST http://localhost:8091/save-location \
+  -H "Content-Type: application/json" \
+  -d '{"location_name":"餐桌"}'
+# {"ok":true,"mock":false}
+```
+
+### `POST /delete-location`
+
+```bash
+curl -X POST http://localhost:8091/delete-location \
+  -H "Content-Type: application/json" \
+  -d '{"location_name":"餐桌"}'
+# {"ok":true,"mock":false}
+```
+
+### `POST /detection-mode/set`
+
+```bash
+curl -X POST http://localhost:8091/detection-mode/set \
+  -H "Content-Type: application/json" \
+  -d '{"on":true}'
+# {"ok":true,"value":true,"mock":false}
+```
+
+### `POST /track-user`
+
+```bash
+curl -X POST http://localhost:8091/track-user \
+  -H "Content-Type: application/json" \
+  -d '{"on":true}'
+# {"ok":true,"value":true,"mock":false}
+```
+
+### `POST /be-with-me`
+
+```bash
+curl -X POST http://localhost:8091/be-with-me
+# {"ok":true,"mock":false}
+```
+
+### `POST /constraint-be-with`
+
+```bash
+curl -X POST http://localhost:8091/constraint-be-with
+# {"ok":true,"mock":false}
 ```
 
 ### `POST /detect-person`
@@ -208,6 +342,7 @@ All tests use FastAPI's `TestClient` (no real network required).
 |---|---|---|
 | Robot required | No | Yes (`TEMI_IP` must be set and reachable) |
 | `/goto`, `/speak`, `/stop` | Returns `ok:true` instantly | Sends WS command; waits for response or timeout |
+| Extended WOZ controls (`/ask`, `/turn`, `/tilt`, `/open-url`, `/save-location`, `/delete-location`, `/track-user`, etc.) | Returns mock success (and sample payload when applicable) | Sends WS command; returns parsed callback payload when available |
 | `/detect-person` | Returns `open_id:null` | Returns `open_id:null` (Phase 1 stub) |
 | `/rfid-scan` | Returns 3 sample tags | Returns error (Phase 2) |
 | `/monitor-focus` | Returns cosine focus trace | Returns error (Phase 2) |
@@ -225,7 +360,11 @@ robot failures.
 
 ### Phase 1 (current)
 
-- Navigation (`/goto`), speech (`/speak`), emergency stop (`/stop`)
+- Navigation (`/goto`), speech (`/speak`), stop (`/stop`, `/stop-movement`)
+- Extended WOZ controls (`/ask`, `/turn`, `/tilt`, `/open-url`, `/call`, `/wakeup`)
+- Location management (`/save-location`, `/delete-location`)
+- Detection/track switches (`/detection-mode/set`, `/detection-mode/check`, `/track-user`)
+- Follow-mode controls (`/be-with-me`, `/constraint-be-with`)
 - Status polling (`/status`)
 - Person detection stub (`/detect-person` — always returns `null`)
 - Full mock mode for plugin development without a robot
@@ -244,7 +383,7 @@ robot failures.
 ```
 temi-sidecar/
 ├── pyproject.toml          # package metadata & dependencies
-├── server.py               # FastAPI app — all 8 endpoints
+├── server.py               # FastAPI app — core + extended WOZ endpoints
 ├── adapters/
 │   ├── __init__.py
 │   └── temi.py             # async WebSocket client (ported from TemiWebSocketClient)

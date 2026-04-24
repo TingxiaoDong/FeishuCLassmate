@@ -106,8 +106,10 @@ class TemiWebSocketClient:
         self._prelaunch_wait_s = max(0.0, prelaunch_wait_s)
         self._ws: Any = None  # websockets.WebSocketClientProtocol
         self._listener_task: asyncio.Task[None] | None = None
-        # Pending response futures keyed by command type
-        self._response_futures: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        # Pending response futures keyed by request id.
+        self._pending_by_id: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+        # Some WOZ callbacks do not echo id; keep a command queue fallback.
+        self._pending_by_command: dict[str, list[tuple[str, asyncio.Future[dict[str, Any]]]]] = {}
 
     # ------------------------------------------------------------------
     # Connection management
@@ -211,14 +213,12 @@ class TemiWebSocketClient:
                 logger.debug("[Temi] Received: %s", data)
 
                 event_type: str = data.get("event", "")
-
-                # Resolve the first pending future whose key matches or any if event matches
-                if self._response_futures:
-                    for key, fut in list(self._response_futures.items()):
-                        if not fut.done():
-                            fut.set_result(data)
-                            del self._response_futures[key]
-                            break
+                msg_id = data.get("id")
+                if msg_id is not None:
+                    self._resolve_by_id(str(msg_id), data)
+                else:
+                    # Fallback for commands whose callback omits id.
+                    self._resolve_first_pending(data)
 
                 # Log notable events
                 if event_type == "onTTSCompleted":
@@ -234,6 +234,46 @@ class TemiWebSocketClient:
             pass
         except (WebSocketException, OSError) as exc:
             logger.warning("[Temi] Listen loop ended: %s", exc)
+
+    def _resolve_by_id(self, request_id: str, data: dict[str, Any]) -> bool:
+        pending = self._pending_by_id.pop(request_id, None)
+        if pending is None:
+            return False
+        cmd_type, fut = pending
+        queue = self._pending_by_command.get(cmd_type, [])
+        self._pending_by_command[cmd_type] = [(rid, f) for rid, f in queue if rid != request_id]
+        if not self._pending_by_command[cmd_type]:
+            self._pending_by_command.pop(cmd_type, None)
+        if not fut.done():
+            fut.set_result(data)
+        return True
+
+    def _resolve_first_pending(self, data: dict[str, Any]) -> bool:
+        for cmd_type, queue in list(self._pending_by_command.items()):
+            while queue:
+                request_id, fut = queue.pop(0)
+                pending = self._pending_by_id.pop(request_id, None)
+                if pending is None:
+                    continue
+                if not fut.done():
+                    fut.set_result(data)
+                    if queue:
+                        self._pending_by_command[cmd_type] = queue
+                    else:
+                        self._pending_by_command.pop(cmd_type, None)
+                    return True
+            self._pending_by_command.pop(cmd_type, None)
+        return False
+
+    def _remove_pending(self, request_id: str) -> None:
+        pending = self._pending_by_id.pop(request_id, None)
+        if pending is None:
+            return
+        cmd_type, _ = pending
+        queue = self._pending_by_command.get(cmd_type, [])
+        self._pending_by_command[cmd_type] = [(rid, f) for rid, f in queue if rid != request_id]
+        if not self._pending_by_command[cmd_type]:
+            self._pending_by_command.pop(cmd_type, None)
 
     # ------------------------------------------------------------------
     # Low-level send
@@ -253,9 +293,11 @@ class TemiWebSocketClient:
             payload["id"] = str(uuid.uuid4())
 
         cmd_type: str = payload.get("command", "unknown")
+        request_id = str(payload["id"])
         loop = asyncio.get_event_loop()
         future: asyncio.Future[dict[str, Any]] = loop.create_future()
-        self._response_futures[cmd_type] = future
+        self._pending_by_id[request_id] = (cmd_type, future)
+        self._pending_by_command.setdefault(cmd_type, []).append((request_id, future))
 
         await self._ws.send(json.dumps(payload, ensure_ascii=False))
         logger.info("[Temi] → WS: %s", json.dumps(payload, ensure_ascii=False))
@@ -263,14 +305,13 @@ class TemiWebSocketClient:
         try:
             return await asyncio.wait_for(future, timeout=timeout)
         except asyncio.TimeoutError:
-            # Temi often completes without sending an explicit response event;
-            # treat timeout as success for navigation/TTS/stop commands.
-            self._response_futures.pop(cmd_type, None)
+            # Temi often completes without sending an explicit response event.
+            self._remove_pending(request_id)
             if cmd_type == "goto":
                 return {"status": "ok", "event": "NavigationCompleted"}
             if cmd_type == "speak":
                 return {"status": "ok", "event": "TTSCompleted"}
-            if cmd_type == "stop":
+            if cmd_type in {"stop", "stopMovement"}:
                 return {"status": "ok", "event": "Stopped"}
             return {"status": "timeout", "message": f"Command timed out after {timeout}s"}
 
@@ -299,6 +340,78 @@ class TemiWebSocketClient:
         except (WebSocketException, OSError) as exc:
             logger.warning("[Temi] stop() failed: %s", exc)
             return False
+
+    async def ask(self, sentence: str) -> str | None:
+        result = await self.send_command({"command": "ask", "sentence": sentence}, timeout=45.0)
+        reply = result.get("reply")
+        return str(reply) if reply is not None else None
+
+    async def open_url(self, url: str, command: str = "openURL") -> bool:
+        result = await self.send_command({"command": command, "url": url}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def tilt(self, angle: float) -> bool:
+        result = await self.send_command({"command": "tilt", "angle": angle}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def turn(self, angle: float) -> bool:
+        result = await self.send_command({"command": "turn", "angle": angle}, timeout=45.0)
+        return result.get("status") != "error"
+
+    async def get_contact(self) -> list[dict[str, Any]]:
+        result = await self.send_command({"command": "getContact"}, timeout=20.0)
+        userinfo = result.get("userinfo")
+        return userinfo if isinstance(userinfo, list) else []
+
+    async def call(self, user_id: str) -> bool:
+        result = await self.send_command({"command": "call", "userId": user_id}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def wakeup(self) -> bool:
+        result = await self.send_command({"command": "wakeup"}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def save_location(self, location_name: str) -> bool:
+        result = await self.send_command(
+            {"command": "saveLocation", "locationName": location_name},
+            timeout=20.0,
+        )
+        return result.get("status") != "error"
+
+    async def delete_location(self, location_name: str) -> bool:
+        # WOZ command for deleting a saved location.
+        result = await self.send_command(
+            {"command": "deleteLocation", "locationName": location_name},
+            timeout=20.0,
+        )
+        return result.get("status") != "error"
+
+    async def stop_movement(self) -> bool:
+        result = await self.send_command({"command": "stopMovement"}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def set_detection_mode(self, on: bool) -> bool | None:
+        result = await self.send_command({"command": "setDetectionMode", "on": on}, timeout=20.0)
+        value = result.get("detection mode")
+        return bool(value) if isinstance(value, bool) else None
+
+    async def check_detection_mode(self) -> bool | None:
+        result = await self.send_command({"command": "checkDetectionMode"}, timeout=20.0)
+        value = result.get("CheckDetectionState:")
+        return bool(value) if isinstance(value, bool) else None
+
+    async def set_track_user_on(self, on: bool) -> bool | None:
+        result = await self.send_command({"command": "setTrackUserOn", "on": on}, timeout=20.0)
+        value = result.get("track user mode")
+        return bool(value) if isinstance(value, bool) else None
+
+    async def be_with_me(self) -> bool:
+        result = await self.send_command({"command": "beWithMe"}, timeout=20.0)
+        return result.get("status") != "error"
+
+    async def constraint_be_with(self) -> bool:
+        result = await self.send_command({"command": "constraintBeWith"}, timeout=20.0)
+        return result.get("status") != "error"
 
     # ------------------------------------------------------------------
     # Phase-2 stubs — raise NotImplementedError in real mode

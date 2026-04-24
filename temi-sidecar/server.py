@@ -15,6 +15,7 @@ TEMI_ADB_PORT               adb TCP port on Temi (default: 5555).
 TEMI_WOZ_PACKAGE            WOZ app package name (default: com.cdi.temiwoz.debug).
 TEMI_WOZ_ACTIVITY           WOZ launcher activity (default: com.cdi.temiwoz.MainActivity).
 TEMI_WOZ_PRELAUNCH_WAIT_S   Wait seconds after am start before WS connect (default: 2.0).
+TEMI_IDLE_TIMEOUT_S         Auto-shutdown timeout after no command (default: 300).
 LOG_LEVEL     Python logging level string, e.g. DEBUG / INFO / WARNING (default: INFO).
 """
 
@@ -58,6 +59,7 @@ TEMI_WOZ_ACTIVITY: str = os.getenv("TEMI_WOZ_ACTIVITY", "com.cdi.temiwoz.MainAct
 TEMI_WOZ_PRELAUNCH_WAIT_S: float = float(os.getenv("TEMI_WOZ_PRELAUNCH_WAIT_S", "2.0"))
 _woz_prelaunch_env = os.getenv("TEMI_WOZ_PRELAUNCH", "1").strip().lower()
 TEMI_WOZ_PRELAUNCH: bool = _woz_prelaunch_env not in {"0", "false", "no", "off"}
+TEMI_IDLE_TIMEOUT_S: float = float(os.getenv("TEMI_IDLE_TIMEOUT_S", "300"))
 
 _mock_env = os.getenv("TEMI_MOCK", "")
 _FORCE_MOCK: bool = bool(_mock_env and _mock_env != "0")
@@ -75,6 +77,9 @@ class AppState:
         self.position: dict[str, float] = {"x": 1.2, "y": 0.5}
         self.is_moving: bool = False
         self.connected: bool = False
+        self.last_command_at_monotonic: float = time.monotonic()
+        self.idle_watchdog_task: asyncio.Task[None] | None = None
+        self.shutdown_started: bool = False
 
 
 _state = AppState()
@@ -108,6 +113,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         ok = await _state.client.connect()
         if ok:
             _state.connected = True
+            _mark_command_activity()
             logger.info("Temi connected successfully")
         else:
             logger.warning(
@@ -117,6 +123,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             _state.mock_mode = True
             _state.client = None
+
+    if not _state.mock_mode and TEMI_IDLE_TIMEOUT_S > 0:
+        _state.idle_watchdog_task = asyncio.create_task(_idle_shutdown_watchdog())
+        logger.info(
+            "Idle shutdown watchdog enabled: %.0fs without command triggers sidecar exit",
+            TEMI_IDLE_TIMEOUT_S,
+        )
 
     # Register graceful shutdown on SIGTERM (in addition to FastAPI's own handling)
     loop = asyncio.get_event_loop()
@@ -138,12 +151,51 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 async def _shutdown() -> None:
+    if _state.shutdown_started:
+        return
+    _state.shutdown_started = True
+
+    if _state.idle_watchdog_task and not _state.idle_watchdog_task.done():
+        _state.idle_watchdog_task.cancel()
+        try:
+            await _state.idle_watchdog_task
+        except asyncio.CancelledError:
+            pass
+        _state.idle_watchdog_task = None
+
     if _state.client:
         logger.info("Closing Temi WebSocket connection …")
         await _state.client.disconnect()
         _state.client = None
         _state.connected = False
     logger.info("Temi sidecar shut down cleanly")
+
+
+def _mark_command_activity() -> None:
+    """Record that a control command was received."""
+    _state.last_command_at_monotonic = time.monotonic()
+
+
+async def _idle_shutdown_watchdog() -> None:
+    """Exit sidecar after prolonged command inactivity."""
+    check_interval_s = 5.0
+    try:
+        while True:
+            await asyncio.sleep(check_interval_s)
+            idle_for_s = time.monotonic() - _state.last_command_at_monotonic
+            if idle_for_s < TEMI_IDLE_TIMEOUT_S:
+                continue
+
+            logger.warning(
+                "No control command for %.0fs (threshold %.0fs); disconnecting WS and exiting sidecar",
+                idle_for_s,
+                TEMI_IDLE_TIMEOUT_S,
+            )
+            await _shutdown()
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+    except asyncio.CancelledError:
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +324,62 @@ class GestureResponse(BaseModel):
     error: str | None = None
 
 
+class AskRequest(BaseModel):
+    sentence: str = Field(..., min_length=1, max_length=500)
+
+
+class AskResponse(BaseModel):
+    ok: bool
+    reply: str | None = None
+    mock: bool = False
+    error: str | None = None
+
+
+class OpenUrlRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    command: Literal["openURL", "interface"] = "openURL"
+
+
+class CommandResponse(BaseModel):
+    ok: bool
+    mock: bool = False
+    error: str | None = None
+
+
+class TurnRequest(BaseModel):
+    angle: float = Field(..., ge=-360, le=360)
+
+
+class TiltRequest(BaseModel):
+    angle: float = Field(..., ge=-30, le=60)
+
+
+class LocationNameRequest(BaseModel):
+    location_name: str = Field(..., min_length=1, max_length=100)
+
+
+class CallRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=200)
+
+
+class ContactResponse(BaseModel):
+    ok: bool
+    contacts: list[dict[str, Any]]
+    mock: bool = False
+    error: str | None = None
+
+
+class ToggleRequest(BaseModel):
+    on: bool
+
+
+class CheckStateResponse(BaseModel):
+    ok: bool
+    value: bool | None = None
+    mock: bool = False
+    error: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
@@ -293,6 +401,7 @@ async def health() -> dict[str, Any]:
 @app.post("/goto", response_model=GotoResponse)
 async def goto(req: GotoRequest) -> GotoResponse:
     """Navigate Temi to a saved location by name."""
+    _mark_command_activity()
     if _is_mock():
         resolved = resolve_location(req.location)
         logger.info("[mock] /goto location=%r → %r", req.location, resolved)
@@ -323,6 +432,7 @@ async def goto(req: GotoRequest) -> GotoResponse:
 @app.post("/speak", response_model=SpeakResponse)
 async def speak(req: SpeakRequest) -> SpeakResponse:
     """Send TTS command to Temi."""
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /speak text=%r voice=%r", req.text, req.voice)
         return SpeakResponse(ok=True, mock=True)
@@ -343,6 +453,7 @@ async def speak(req: SpeakRequest) -> SpeakResponse:
 @app.post("/stop", response_model=StopResponse)
 async def stop(req: StopRequest) -> StopResponse:
     """Stop all Temi motion."""
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /stop immediate=%r", req.immediate)
         _state.is_moving = False
@@ -369,6 +480,7 @@ async def detect_person(req: DetectPersonRequest) -> DetectPersonResponse:
     Phase 1: always returns open_id=null (no vision pipeline yet).
     Phase 2: will integrate face / badge recognition.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /detect-person timeout_ms=%d", req.timeout_ms)
         return DetectPersonResponse(open_id=None, confidence=0.0, mock=True)
@@ -414,6 +526,7 @@ async def rfid_scan(req: RfidScanRequest) -> RfidScanResponse:
     Phase 2 feature — real mode raises NotImplementedError (returned as error payload).
     Mock mode returns plausible sample data.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /rfid-scan route=%r", req.route)
         mock_tags = [
@@ -450,6 +563,7 @@ async def monitor_focus(req: MonitorFocusRequest) -> MonitorFocusResponse:
     Phase 2 feature — real mode returns an error.
     Mock mode produces a realistic mostly-focused pattern with a dip in the middle.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info(
             "[mock] /monitor-focus open_id=%r duration_s=%d",
@@ -511,6 +625,7 @@ async def gesture(req: GestureRequest) -> GestureResponse:
     Phase 2 feature — real mode returns an error.
     Mock mode acknowledges immediately.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /gesture type=%r", req.type)
         return GestureResponse(ok=True, mock=True)
@@ -526,6 +641,248 @@ async def gesture(req: GestureRequest) -> GestureResponse:
         return GestureResponse(ok=False, error=str(exc))
 
     return GestureResponse(ok=True)
+
+
+@app.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest) -> AskResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /ask sentence=%r", req.sentence)
+        return AskResponse(ok=True, reply="(mock) 收到提问", mock=True)
+
+    assert _state.client is not None
+    try:
+        reply = await _state.client.ask(req.sentence)
+        return AskResponse(ok=True, reply=reply)
+    except Exception as exc:
+        logger.exception("/ask failed")
+        return AskResponse(ok=False, error=str(exc))
+
+
+@app.post("/open-url", response_model=CommandResponse)
+async def open_url(req: OpenUrlRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /open-url command=%r url=%r", req.command, req.url)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.open_url(req.url, command=req.command)
+        return CommandResponse(ok=ok, error=None if ok else "Open URL command failed")
+    except Exception as exc:
+        logger.exception("/open-url failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/turn", response_model=CommandResponse)
+async def turn(req: TurnRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /turn angle=%s", req.angle)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.turn(req.angle)
+        return CommandResponse(ok=ok, error=None if ok else "Turn command failed")
+    except Exception as exc:
+        logger.exception("/turn failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/tilt", response_model=CommandResponse)
+async def tilt(req: TiltRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /tilt angle=%s", req.angle)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.tilt(req.angle)
+        return CommandResponse(ok=ok, error=None if ok else "Tilt command failed")
+    except Exception as exc:
+        logger.exception("/tilt failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.get("/contacts", response_model=ContactResponse)
+async def contacts() -> ContactResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /contacts")
+        return ContactResponse(ok=True, contacts=[], mock=True)
+
+    assert _state.client is not None
+    try:
+        contacts_list = await _state.client.get_contact()
+        return ContactResponse(ok=True, contacts=contacts_list)
+    except Exception as exc:
+        logger.exception("/contacts failed")
+        return ContactResponse(ok=False, contacts=[], error=str(exc))
+
+
+@app.post("/call", response_model=CommandResponse)
+async def call(req: CallRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /call user_id=%r", req.user_id)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.call(req.user_id)
+        return CommandResponse(ok=ok, error=None if ok else "Call command failed")
+    except Exception as exc:
+        logger.exception("/call failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/wakeup", response_model=CommandResponse)
+async def wakeup() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /wakeup")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.wakeup()
+        return CommandResponse(ok=ok, error=None if ok else "Wakeup command failed")
+    except Exception as exc:
+        logger.exception("/wakeup failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/save-location", response_model=CommandResponse)
+async def save_location(req: LocationNameRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /save-location name=%r", req.location_name)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.save_location(req.location_name)
+        return CommandResponse(ok=ok, error=None if ok else "Save location command failed")
+    except Exception as exc:
+        logger.exception("/save-location failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/delete-location", response_model=CommandResponse)
+async def delete_location(req: LocationNameRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /delete-location name=%r", req.location_name)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.delete_location(req.location_name)
+        return CommandResponse(ok=ok, error=None if ok else "Delete location command failed")
+    except Exception as exc:
+        logger.exception("/delete-location failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/stop-movement", response_model=CommandResponse)
+async def stop_movement() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /stop-movement")
+        _state.is_moving = False
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.stop_movement()
+        _state.is_moving = False
+        return CommandResponse(ok=ok, error=None if ok else "Stop movement command failed")
+    except Exception as exc:
+        logger.exception("/stop-movement failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/detection-mode/set", response_model=CheckStateResponse)
+async def set_detection_mode(req: ToggleRequest) -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /detection-mode/set on=%r", req.on)
+        return CheckStateResponse(ok=True, value=req.on, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.set_detection_mode(req.on)
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/detection-mode/set failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.get("/detection-mode/check", response_model=CheckStateResponse)
+async def check_detection_mode() -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /detection-mode/check")
+        return CheckStateResponse(ok=True, value=False, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.check_detection_mode()
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/detection-mode/check failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.post("/track-user", response_model=CheckStateResponse)
+async def track_user(req: ToggleRequest) -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /track-user on=%r", req.on)
+        return CheckStateResponse(ok=True, value=req.on, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.set_track_user_on(req.on)
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/track-user failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.post("/be-with-me", response_model=CommandResponse)
+async def be_with_me() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /be-with-me")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.be_with_me()
+        return CommandResponse(ok=ok, error=None if ok else "beWithMe command failed")
+    except Exception as exc:
+        logger.exception("/be-with-me failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/constraint-be-with", response_model=CommandResponse)
+async def constraint_be_with() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /constraint-be-with")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.constraint_be_with()
+        return CommandResponse(ok=ok, error=None if ok else "constraintBeWith command failed")
+    except Exception as exc:
+        logger.exception("/constraint-be-with failed")
+        return CommandResponse(ok=False, error=str(exc))
 
 
 # ---------------------------------------------------------------------------
