@@ -230,6 +230,126 @@ class TemiWebSocketClient:
             logger.warning("[Temi] stop() failed: %s", exc)
             return False
 
+    async def turnBy(self, degrees: int, speed: float = 0.5) -> bool:
+        """Rotate robot by `degrees` (positive=left, negative=right).
+
+        Args:
+            degrees: Rotation angle in degrees. Positive = counter-clockwise (left),
+                     negative = clockwise (right).
+            speed:    Rotation speed in range [0, 1].
+        """
+        result = await self.send_command(
+            {"command": "turnBy", "degrees": degrees, "speed": speed}
+        )
+        return result.get("status") != "error"
+
+    async def tiltAngle(self, degrees: int, speed: float = 0.5) -> bool:
+        """Tilt robot head to absolute `degrees` (-30 ~ 55).
+
+        Args:
+            degrees: Absolute tilt angle. Range -30 (down) to +55 (up).
+            speed:   Tilt speed in range [0, 1].
+        """
+        result = await self.send_command(
+            {"command": "tiltAngle", "degrees": degrees, "speed": speed}
+        )
+        return result.get("status") != "error"
+
+    async def tiltBy(self, degrees: int, speed: float = 0.5) -> bool:
+        """Tilt robot head by relative `degrees` from current position.
+
+        Args:
+            degrees: Relative tilt change in degrees.
+            speed:   Tilt speed in range [0, 1].
+        """
+        result = await self.send_command(
+            {"command": "tiltBy", "degrees": degrees, "speed": speed}
+        )
+        return result.get("status") != "error"
+
+    async def skidJoy(self, x: float, y: float, smart: bool = False) -> bool:
+        """Omni-directional movement using speed vector.
+
+        Args:
+            x:     Forward/back speed in [-1, 1]. Positive = forward.
+            y:     Left/right speed in [-1, 1]. Positive = left (strafe).
+            smart: Enable obstacle avoidance (requires firmware 0.10.79+).
+        """
+        result = await self.send_command(
+            {"command": "skidJoy", "x": x, "y": y, "smart": smart}
+        )
+        return result.get("status") != "error"
+
+    async def askQuestion(self, text: str) -> bool:
+        """Send TTS and wait for voice response (conversational turn).
+
+        Unlike speak(), this waits for the user to answer.
+        """
+        result = await self.send_command(
+            {"command": "ask", "sentence": text},
+            timeout=60.0,
+        )
+        return result.get("status") != "error"
+
+    async def wakeup(self) -> bool:
+        """Wake up temi from sleep / activate listening."""
+        try:
+            await self._ws.send(json.dumps({"command": "wakeup"}))
+            return True
+        except (WebSocketException, OSError) as exc:
+            logger.warning("[Temi] wakeup() failed: %s", exc)
+            return False
+
+    async def startFollow(self) -> bool:
+        """Start follow-me mode."""
+        try:
+            await self._ws.send(json.dumps({"command": "followMode", "mode": "start"}))
+            return True
+        except (WebSocketException, OSError) as exc:
+            logger.warning("[Temi] startFollow() failed: %s", exc)
+            return False
+
+    async def stopFollow(self) -> bool:
+        """Stop follow-me mode."""
+        try:
+            await self._ws.send(json.dumps({"command": "followMode", "mode": "stop"}))
+            return True
+        except (WebSocketException, OSError) as exc:
+            logger.warning("[Temi] stopFollow() failed: %s", exc)
+            return False
+
+    async def startDetecting(self) -> bool:
+        """Start people detection."""
+        try:
+            await self._ws.send(json.dumps({"command": "startDetection"}))
+            return True
+        except (WebSocketException, OSError) as exc:
+            logger.warning("[Temi] startDetecting() failed: %s", exc)
+            return False
+
+    async def stopDetecting(self) -> bool:
+        """Stop people detection."""
+        try:
+            await self._ws.send(json.dumps({"command": "stopDetection"}))
+            return True
+        except (WebSocketException, OSError) as exc:
+            logger.warning("[Temi] stopDetecting() failed: %s", exc)
+            return False
+
+    async def saveLocation(self, name: str) -> bool:
+        """Save the current position as a named location."""
+        result = await self.send_command(
+            {"command": "saveLocation", "location": name}
+        )
+        return result.get("status") != "error"
+
+    async def deleteLocation(self, name: str) -> bool:
+        """Delete a saved location by name."""
+        result = await self.send_command(
+            {"command": "deleteLocation", "location": name}
+        )
+        return result.get("status") != "error"
+
     # ------------------------------------------------------------------
     # Phase-2 stubs — raise NotImplementedError in real mode
     # ------------------------------------------------------------------

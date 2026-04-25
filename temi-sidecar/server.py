@@ -250,6 +250,90 @@ class GestureResponse(BaseModel):
     error: str | None = None
 
 
+# ---- Movement extensions ----
+class TurnRequest(BaseModel):
+    degrees: int = Field(..., description="Rotation angle in degrees. Positive=left, negative=right.")
+    speed: float = Field(default=0.5, ge=0.0, le=1.0, description="Rotation speed [0, 1]")
+
+
+class TurnResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+
+
+class TiltRequest(BaseModel):
+    degrees: int = Field(..., ge=-30, le=55, description="Absolute tilt angle [-30=down, +55=up]")
+    speed: float = Field(default=0.5, ge=0.0, le=1.0, description="Tilt speed [0, 1]")
+
+
+class TiltResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+
+
+class MoveRequest(BaseModel):
+    x: float = Field(default=0.0, ge=-1.0, le=1.0, description="Forward/back speed [-1, 1]")
+    y: float = Field(default=0.0, ge=-1.0, le=1.0, description="Left/right speed [-1, 1] (positive=left)")
+    smart: bool = Field(default=False, description="Enable obstacle avoidance (firmware 0.10.79+)")
+
+
+class MoveResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+
+
+class AskRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=500, description="Question text for temi to ask")
+
+
+class AskResponse(BaseModel):
+    ok: bool
+    mock: bool = False
+    error: str | None = None
+
+
+class WakeupResponse(BaseModel):
+    ok: bool
+    mock: bool = False
+
+
+class FollowResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+
+
+class DetectionResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+
+
+class SaveLocationRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="Name for the saved location")
+
+
+class SaveLocationResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+    error: str | None = None
+
+
+class DeleteLocationRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="Name of the location to delete")
+
+
+class DeleteLocationResponse(BaseModel):
+    ok: bool
+    message: str = ""
+    mock: bool = False
+    error: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Health check
 # ---------------------------------------------------------------------------
@@ -479,8 +563,233 @@ def _generate_mock_focus_samples(duration_s: int) -> list[FocusSample]:
 
 
 # ---------------------------------------------------------------------------
+# /turn
+# ---------------------------------------------------------------------------
+
+@app.post("/turn", response_model=TurnResponse)
+async def turn(req: TurnRequest) -> TurnResponse:
+    """Rotate the robot by a given angle (positive=left, negative=right)."""
+    if _is_mock():
+        logger.info("[mock] /turn degrees=%d speed=%.2f", req.degrees, req.speed)
+        return TurnResponse(ok=True, message=f"(mock) Temi 向{'左' if req.degrees > 0 else '右'}转 {abs(req.degrees)}°", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.turnBy(req.degrees, req.speed)
+        direction = "左" if req.degrees > 0 else "右"
+        return TurnResponse(
+            ok=ok,
+            message=f"Temi 向{direction}转 {abs(req.degrees)}°" if ok else "Rotation failed",
+        )
+    except Exception as exc:
+        logger.exception("/turn failed")
+        return TurnResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /tilt
+# ---------------------------------------------------------------------------
+
+@app.post("/tilt", response_model=TiltResponse)
+async def tilt(req: TiltRequest) -> TiltResponse:
+    """Tilt the robot head to an absolute angle (-30 ~ 55)."""
+    if _is_mock():
+        direction = "抬头" if req.degrees > 0 else "低头"
+        logger.info("[mock] /tilt degrees=%d speed=%.2f", req.degrees, req.speed)
+        return TiltResponse(ok=True, message=f"(mock) Temi {direction}至 {req.degrees}°", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.tiltAngle(req.degrees, req.speed)
+        direction = "抬头" if req.degrees > 0 else "低头"
+        return TiltResponse(
+            ok=ok,
+            message=f"Temi {direction}至 {req.degrees}°" if ok else "Tilt failed",
+        )
+    except Exception as exc:
+        logger.exception("/tilt failed")
+        return TiltResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /move
+# ---------------------------------------------------------------------------
+
+@app.post("/move", response_model=MoveResponse)
+async def move(req: MoveRequest) -> MoveResponse:
+    """Omni-directional movement via skidJoy (x=forward/back, y=left/right)."""
+    if _is_mock():
+        logger.info("[mock] /move x=%.2f y=%.2f smart=%s", req.x, req.y, req.smart)
+        parts = []
+        if req.x > 0: parts.append("前进")
+        elif req.x < 0: parts.append("后退")
+        if req.y > 0: parts.append("向左")
+        elif req.y < 0: parts.append("向右")
+        msg = "(mock) Temi " + ("、".join(parts) if parts else "静止")
+        return MoveResponse(ok=True, message=msg, mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.skidJoy(req.x, req.y, req.smart)
+        parts = []
+        if req.x > 0: parts.append("前进")
+        elif req.x < 0: parts.append("后退")
+        if req.y > 0: parts.append("向左")
+        elif req.y < 0: parts.append("向右")
+        msg = "、".join(parts) if parts else "移动完成"
+        return MoveResponse(ok=ok, message=msg)
+    except Exception as exc:
+        logger.exception("/move failed")
+        return MoveResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /ask
+# ---------------------------------------------------------------------------
+
+@app.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest) -> AskResponse:
+    """Send a question to temi and wait for the user's voice response."""
+    if _is_mock():
+        logger.info("[mock] /ask text=%r", req.text)
+        return AskResponse(ok=True, mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.askQuestion(req.text)
+        return AskResponse(ok=ok, error=None if ok else "askQuestion failed")
+    except Exception as exc:
+        logger.exception("/ask failed")
+        return AskResponse(ok=False, error=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /wakeup
+# ---------------------------------------------------------------------------
+
+@app.post("/wakeup", response_model=WakeupResponse)
+async def wakeup() -> WakeupResponse:
+    """Wake up temi (activate listening / come out of sleep)."""
+    if _is_mock():
+        logger.info("[mock] /wakeup")
+        return WakeupResponse(ok=True, mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.wakeup()
+        return WakeupResponse(ok=ok)
+    except Exception as exc:
+        logger.exception("/wakeup failed")
+        return WakeupResponse(ok=False)
+
+
+# ---------------------------------------------------------------------------
+# /follow-start  /follow-stop
+# ---------------------------------------------------------------------------
+
+@app.post("/follow-start", response_model=FollowResponse)
+async def follow_start() -> FollowResponse:
+    """Start follow-me mode."""
+    if _is_mock():
+        logger.info("[mock] /follow-start")
+        return FollowResponse(ok=True, message="(mock) Temi 进入跟随模式", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.startFollow()
+        return FollowResponse(ok=ok, message="Temi 进入跟随模式" if ok else "Follow start failed")
+    except Exception as exc:
+        logger.exception("/follow-start failed")
+        return FollowResponse(ok=False, message=str(exc))
+
+
+@app.post("/follow-stop", response_model=FollowResponse)
+async def follow_stop() -> FollowResponse:
+    """Stop follow-me mode."""
+    if _is_mock():
+        logger.info("[mock] /follow-stop")
+        return FollowResponse(ok=True, message="(mock) Temi 退出跟随模式", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.stopFollow()
+        return FollowResponse(ok=ok, message="Temi 退出跟随模式" if ok else "Follow stop failed")
+    except Exception as exc:
+        logger.exception("/follow-stop failed")
+        return FollowResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /detection-start  /detection-stop
+# ---------------------------------------------------------------------------
+
+@app.post("/detection-start", response_model=DetectionResponse)
+async def detection_start() -> DetectionResponse:
+    """Start people detection."""
+    if _is_mock():
+        logger.info("[mock] /detection-start")
+        return DetectionResponse(ok=True, message="(mock) 人员检测已开启", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.startDetecting()
+        return DetectionResponse(ok=ok, message="人员检测已开启" if ok else "Detection start failed")
+    except Exception as exc:
+        logger.exception("/detection-start failed")
+        return DetectionResponse(ok=False, message=str(exc))
+
+
+@app.post("/detection-stop", response_model=DetectionResponse)
+async def detection_stop() -> DetectionResponse:
+    """Stop people detection."""
+    if _is_mock():
+        logger.info("[mock] /detection-stop")
+        return DetectionResponse(ok=True, message="(mock) 人员检测已关闭", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.stopDetecting()
+        return DetectionResponse(ok=ok, message="人员检测已关闭" if ok else "Detection stop failed")
+    except Exception as exc:
+        logger.exception("/detection-stop failed")
+        return DetectionResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# /save-location  /delete-location
+# ---------------------------------------------------------------------------
+
+@app.post("/save-location", response_model=SaveLocationResponse)
+async def save_location(req: SaveLocationRequest) -> SaveLocationResponse:
+    """Save the current position as a named location."""
+    if _is_mock():
+        logger.info("[mock] /save-location name=%r", req.name)
+        return SaveLocationResponse(ok=True, message=f"(mock) 位置已保存为「{req.name}」", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.saveLocation(req.name)
+        return SaveLocationResponse(
+            ok=ok,
+            message=f"位置已保存为「{req.name}」" if ok else "Save location failed",
+        )
+    except Exception as exc:
+        logger.exception("/save-location failed")
+        return SaveLocationResponse(ok=False, message=str(exc))
+
+
+@app.post("/delete-location", response_model=DeleteLocationResponse)
+async def delete_location(req: DeleteLocationRequest) -> DeleteLocationResponse:
+    """Delete a saved location by name."""
+    if _is_mock():
+        logger.info("[mock] /delete-location name=%r", req.name)
+        return DeleteLocationResponse(ok=True, message=f"(mock) 已删除位置「{req.name}」", mock=True)
+    assert _state.client is not None
+    try:
+        ok = await _state.client.deleteLocation(req.name)
+        return DeleteLocationResponse(
+            ok=ok,
+            message=f"已删除位置「{req.name}」" if ok else "Delete location failed",
+        )
+    except Exception as exc:
+        logger.exception("/delete-location failed")
+        return DeleteLocationResponse(ok=False, message=str(exc))
+
+
+# ---------------------------------------------------------------------------
 # /gesture
 # ---------------------------------------------------------------------------
+
 
 @app.post("/gesture", response_model=GestureResponse)
 async def gesture(req: GestureRequest) -> GestureResponse:
