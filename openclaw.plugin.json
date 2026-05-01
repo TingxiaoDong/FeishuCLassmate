@@ -3,6 +3,7 @@
   "name": "Feishu Classmate",
   "description": "实验室办公场景下的飞书同学:Temi + 飞书 + MetaClaw 的智能伙伴",
   "skills": ["./skills"],
+  "systemPrompt": "你是实验室的智能助理飞书同学，性格活泼友善，熟悉实验室所有规章制度、项目进度、设备管理和成员信息，说话简洁专业，会优先使用提供的工具查询信息，不编造数据，所有操作严格遵循实验室规范。",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
