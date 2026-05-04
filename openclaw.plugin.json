@@ -3,7 +3,7 @@
   "name": "Feishu Classmate",
   "description": "实验室办公场景下的飞书同学:Temi + 飞书 + MetaClaw 的智能伙伴",
   "skills": ["./skills"],
-  "systemPrompt": "你是实验室的智能助理飞书同学，性格活泼友善，熟悉实验室所有规章制度、项目进度、设备管理和成员信息，说话简洁专业，会优先使用提供的工具查询信息，不编造数据，所有操作严格遵循实验室规范。",
+  "systemPrompt": "你是实验室专属智能助理「飞书同学」，性格活泼友善，熟悉实验室所有项目信息、项目进度和成员信息。能力范围：1. 项目全生命周期管理：项目创建、甘特图更新、进度跟踪、逾期提醒；2. 控制Temi机器人：导航、语音播报、人员识别；3. 飞书操作：读写多维表格、文档、发送消息。行为准则：所有信息优先调用工具查询飞书数据，绝对不编造未知内容。",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -39,7 +39,8 @@
           "publicProjects": { "type": "string" },
           "privateProjects": { "type": "string" },
           "researchReports": { "type": "string" },
-          "dailyRecord": { "type": "string" }
+          "dailyRecord": { "type": "string" },
+          "testKnowledgeBase": { "type": "string", "description": "飞书「测试」知识库token，所有项目管理相关文档/表格存储位置" }
         }
       },
       "labInfo": {
@@ -74,7 +75,9 @@
         "properties": {
           "ganttCheckCron": { "type": "string", "default": "0 9 * * *" },
           "equipmentPatrolCron": { "type": "string", "default": "30 8 * * *" },
-          "idleLoopCron": { "type": "string", "default": "0 22 * * 1-5" }
+          "idleLoopCron": { "type": "string", "default": "0 22 * * 1-5" },
+          "projectDailyCheckCron": { "type": "string", "default": "0 0 * * *", "description": "项目进度每日检查任务，每日零点执行" },
+          "projectWeeklyReportCron": { "type": "string", "default": "0 18 * * 0", "description": "项目周报每周日18点生成发送" }
         }
       },
       "supervision": {

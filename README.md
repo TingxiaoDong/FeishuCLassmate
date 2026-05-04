@@ -168,85 +168,12 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 ## 🛠️ Skills Catalog
 
-**28 个 Agentic Skill**。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
-
-### 🎓 教学 / 访客
+**2 个 Agentic Skill**。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
 
 | Skill | 作用 |
 |---|---|
-| [conduct-lab-tour](skills/conduct-lab-tour/SKILL.md) | 5 阶段导览(开场白 → 实验室 → 特色区 → 工位区 → 问答) |
-| [lab-onboarding](skills/lab-onboarding/SKILL.md) | 新生 12 项入职 checklist 自动跟进 |
-
-### 📊 项目 / 进度
-
-| Skill | 作用 |
-|---|---|
-| [manage-gantt](skills/manage-gantt/SKILL.md) | 口述 → 甘特图;每日节点提醒 |
-| [weekly-digest](skills/weekly-digest/SKILL.md) | 每周五自动生成 lab 周报 |
-| [daily-standup](skills/daily-standup/SKILL.md) | 每日站会汇总 |
-
-### 🔬 实验 / 训练
-
-| Skill | 作用 |
-|---|---|
-| [training-run-tracker](skills/training-run-tracker/SKILL.md) | RL/ML 训练 Run 元数据 + W&B/TB 链接 |
-| [robot-checkpoint](skills/robot-checkpoint/SKILL.md) | Policy checkpoint + A/B 对比 |
-| [simulation-log](skills/simulation-log/SKILL.md) | Sim-to-Real gap + 可复现 seed 管理 |
-| [log-experiment](skills/log-experiment/SKILL.md) | 通用实验记录 |
-
-### 📚 文献 / 投稿
-
-| Skill | 作用 |
-|---|---|
-| [manage-papers](skills/manage-papers/SKILL.md) | arXiv 自动抓 + 本地 Papers 库 |
-| [submission-tracking](skills/submission-tracking/SKILL.md) | 投稿状态机(准备中 → 已投 → 审稿 → 接收/拒/修改) |
-| [idle-research](skills/idle-research/SKILL.md) | 闲时自主研究周报 |
-
-### 🔧 器材 / 资源
-
-| Skill | 作用 |
-|---|---|
-| [manage-equipment](skills/manage-equipment/SKILL.md) | 借还登记 + RFID 每日巡查 |
-| [reserve-equipment](skills/reserve-equipment/SKILL.md) | GPU / 3D 打印机 / 显微镜时段预约 |
-
-### 👨‍🏫 导师 / 管理
-
-| Skill | 作用 |
-|---|---|
-| [supervisor-dashboard](skills/supervisor-dashboard/SKILL.md) | `/dashboard` 一键看所有学生进度 |
-| [supervisor-task-assign](skills/supervisor-task-assign/SKILL.md) | 自然语言派任务 + 自动 DM |
-| [one-on-one-scheduler](skills/one-on-one-scheduler/SKILL.md) | 1:1 排期 + 自动生成议程 |
-| [supervise-student](skills/supervise-student/SKILL.md) | 学生自我监督会话(线上 + 线下) |
-
-### 📋 会议 / 协同
-
-| Skill | 作用 |
-|---|---|
-| [meeting-agenda](skills/meeting-agenda/SKILL.md) | 组会议程前 24h 收集 |
-| [meeting-minutes](skills/meeting-minutes/SKILL.md) | 纪要 → 行动项 → 自动进 Gantt |
-| [reading-group](skills/reading-group/SKILL.md) | 每周 paper 轮值 + 讨论点生成 |
-
-### 👥 人才 / 成长
-
-| Skill | 作用 |
-|---|---|
-| [mentor-dispatch](skills/mentor-dispatch/SKILL.md) | 新生提问 → 自动匹配师兄师姐 |
-| [skill-tree](skills/skill-tree/SKILL.md) | 技能标签库(ROS / MuJoCo / RL / SLAM 等) |
-| [initiate-conversation](skills/initiate-conversation/SKILL.md) | Bot 主动闲聊(有边界 + 冷却) |
-
-### 📖 知识 / 文化
-
-| Skill | 作用 |
-|---|---|
-| [failure-archive](skills/failure-archive/SKILL.md) | "失败博物馆" — 实验教训归档,防重复踩坑 |
-| [lab-faq-search](skills/lab-faq-search/SKILL.md) | 入门 FAQ 搜索(Docker / GPU / SSH 等) |
-| [lab-meme](skills/lab-meme/SKILL.md) | 实验室段子 / inside jokes(带 consent 审核) |
-
-### 🧬 技能沉淀
-
-| Skill | 作用 |
-|---|---|
-| [evolve-telemetry](skills/evolve-telemetry/SKILL.md) | 查询 ToolTrace 轨迹,辅助 skill 迭代 |
+| [manage-project](skills/manage-project/SKILL.md) | 项目全生命周期管理：信息收集、甘特图自动更新、逾期检查、高优先级项目高颗粒度跟踪、智能帮扶提醒 |
+| [temi-connector](skills/temi-connector/SKILL.md) | Temi 机器人控制连接器：导航、语音、视觉识别、RFID扫描、专注度监测等硬件能力封装 |
 
 ---
 
@@ -317,7 +244,7 @@ pnpm format      # Prettier
 
 ### 加新 skill
 
-1. 新建 `skills/<name>/SKILL.md`,照 [manage-gantt/SKILL.md](skills/manage-gantt/SKILL.md) 模板
+1. 新建 `skills/<name>/SKILL.md`,照 [manage-project/SKILL.md](skills/manage-project/SKILL.md) 模板
 2. 重启 gateway,OpenClaw 自动扫到
 3. 在 skill 里**只**用 `@larksuite/openclaw-lark` 的 raw tool + `feishu_classmate_data_layout`,不写新 zod tool
 
