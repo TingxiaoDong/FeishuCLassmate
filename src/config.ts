@@ -23,7 +23,6 @@ export interface ClassmateConfig {
       weekly_digests?: string;
       submissions?: string;
       standups?: string;
-      tool_trace?: string;
       papers?: string;
       experiments?: string;
       reservations?: string;
@@ -31,13 +30,9 @@ export interface ClassmateConfig {
       training_runs?: string;
       checkpoints?: string;
       sim_runs?: string;
-      skill_tree?: string;
-      reading_group?: string;
-      one_on_ones?: string;
-      failure_archive?: string;
-      lab_faq?: string;
+
+      
       mentor_answers?: string;
-      lab_memes?: string;
       task_decomposition?: string;
     };
   };
