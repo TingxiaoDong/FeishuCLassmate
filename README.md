@@ -174,7 +174,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 | Skill | 作用 |
 |---|---|
-| [conduct-lab-tour](skills/conduct-lab-tour/SKILL.md) | 5 阶段导览(开场白 → 实验室 → 特色区 → 工位区 → 问答) |
+| [conduct-lab-tour](skills/conduct-lab-tour/SKILL.md) | 导览入口 → [lab-tour-prepare](skills/lab-tour-prepare/SKILL.md)(写稿) / [lab-tour-run](skills/lab-tour-run/SKILL.md)(现场) |
 | [lab-onboarding](skills/lab-onboarding/SKILL.md) | 新生 12 项入职 checklist 自动跟进 |
 
 ### 📊 项目 / 进度
@@ -257,7 +257,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 | 组 | Tool | 用途 |
 |---|---|---|
 | `data` | `feishu_classmate_data_layout` | 返回 app_token + table_ids + 字段 schema |
-| `temi` | `navigate_to` / `speak` / `stop` / `detect_person` / `status` / `rfid_scan` / `monitor_focus` / `gesture` | Temi sidecar HTTP 控制 |
+| `temi` | `navigate_to` / `speak` / `stop` / `wakeup` / `detect_person` / `status` / `rfid_scan` / `monitor_focus` / `gesture` | Temi sidecar HTTP 控制 |
 | `supervision` | `start` / `tick` / `summarize` | 有状态的监督会话(内存) |
 | `chat` | `pick_topic` / `should_engage` | 闲聊触发冷却 |
 | `research` | `search_works` | arXiv 搜索 |
@@ -339,7 +339,7 @@ feishu-classmate/
 │   │   └── setup.ts             # 幂等建表 + sidecar 状态持久化
 │   ├── tools/
 │   │   ├── data-layout.ts       # 唯一的 bitable 相关 tool
-│   │   ├── temi/                # 8 个 temi sidecar tool
+│   │   ├── temi/                # 9 个 temi sidecar tool
 │   │   ├── supervision/         # 3 个监督会话 tool
 │   │   ├── chat/                # 闲聊冷却
 │   │   └── research/search-works.ts  # arXiv

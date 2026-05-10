@@ -25,6 +25,7 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import websockets
@@ -71,6 +72,48 @@ def resolve_location(name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# ASR (speech-to-text) payload helpers — WOZ JSON shape varies by app version
+# ---------------------------------------------------------------------------
+
+OnAsrCompleted = Callable[[dict[str, Any]], Awaitable[None]]
+
+
+def extract_asr_text_from_woz(data: dict[str, Any]) -> str | None:
+    """Best-effort extract user speech text from a WOZ ``onASRCompleted`` (or similar) message."""
+    for key in (
+        "text",
+        "transcript",
+        "sentence",
+        "result",
+        "asrText",
+        "asr_text",
+        "message",
+        "reply",
+        "content",
+        "recognizedText",
+        "recognized_text",
+    ):
+        val = data.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    for nest_key in ("asr", "data", "payload", "results"):
+        nested = data.get(nest_key)
+        if isinstance(nested, dict):
+            inner = extract_asr_text_from_woz(nested)
+            if inner:
+                return inner
+        if isinstance(nested, list) and nested:
+            first = nested[0]
+            if isinstance(first, dict):
+                inner = extract_asr_text_from_woz(first)
+                if inner:
+                    return inner
+            if isinstance(first, str) and first.strip():
+                return first.strip()
+    return None
+
+
+# ---------------------------------------------------------------------------
 # WebSocket client
 # ---------------------------------------------------------------------------
 
@@ -95,6 +138,7 @@ class TemiWebSocketClient:
         woz_package: str = "com.cdi.temiwoz.debug",
         woz_activity: str = "com.cdi.temiwoz.MainActivity",
         prelaunch_wait_s: float = 2.0,
+        on_asr_completed: OnAsrCompleted | None = None,
     ) -> None:
         self._ip = ip
         self._port = port
@@ -110,6 +154,7 @@ class TemiWebSocketClient:
         self._pending_by_id: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
         # Some WOZ callbacks do not echo id; keep a command queue fallback.
         self._pending_by_command: dict[str, list[tuple[str, asyncio.Future[dict[str, Any]]]]] = {}
+        self._on_asr_completed: OnAsrCompleted | None = on_asr_completed
 
     # ------------------------------------------------------------------
     # Connection management
@@ -224,7 +269,13 @@ class TemiWebSocketClient:
                 if event_type == "onTTSCompleted":
                     logger.debug("[Temi] TTS completed")
                 elif event_type == "onASRCompleted":
-                    logger.debug("[Temi] ASR completed")
+                    logger.debug("[Temi] ASR raw payload: %s", data)
+                    logger.info("[Temi] ASR completed (event=onASRCompleted)")
+                    if self._on_asr_completed is not None:
+                        try:
+                            await self._on_asr_completed(dict(data))
+                        except Exception as exc:
+                            logger.warning("[Temi] on_asr_completed handler failed: %s", exc)
                 elif event_type == "onDetectionStateChanged":
                     logger.debug("[Temi] Detection state: %s", data.get("state"))
                 elif event_type == "onNavigationCompleted":

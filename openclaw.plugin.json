@@ -38,7 +38,8 @@
           "publicProjects": { "type": "string" },
           "privateProjects": { "type": "string" },
           "researchReports": { "type": "string" },
-          "dailyRecord": { "type": "string" }
+          "dailyRecord": { "type": "string" },
+          "tourTemplate": { "type": "string", "description": "导览母版云文档 token 或链接;也可用 FEISHU_DOC_TOUR_TEMPLATE" }
         }
       },
       "labInfo": {

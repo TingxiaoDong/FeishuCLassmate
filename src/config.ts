@@ -49,6 +49,8 @@ export interface ClassmateConfig {
     dailyRecord?: string;
     dailyRecordShortTerm?: string;
     dailyRecordLongTerm?: string;
+    /** 导览母版 Doc token/url；也可用环境变量 FEISHU_DOC_TOUR_TEMPLATE */
+    tourTemplate?: string;
   };
   labInfo: {
     name: string;
@@ -94,7 +96,11 @@ export function readConfig(raw: unknown): ClassmateConfig {
       appToken: cfg.bitable?.appToken || process.env.FEISHU_BITABLE_APP_TOKEN || '',
       tableIds: cfg.bitable?.tableIds || {},
     },
-    docs: cfg.docs || {},
+    docs: {
+      ...(cfg.docs || {}),
+      tourTemplate:
+        cfg.docs?.tourTemplate || process.env.FEISHU_DOC_TOUR_TEMPLATE || undefined,
+    },
     labInfo: {
       name: cfg.labInfo?.name || 'Our Lab',
       supervisorName: cfg.labInfo?.supervisorName || '',

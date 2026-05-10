@@ -45,6 +45,9 @@ describe('integration: feishu_classmate_data_layout', () => {
 
     expect(result).toHaveProperty('app_token', 'app_integration_token');
     expect(result).toHaveProperty('tables');
+    expect((result as { plugin_docs?: Record<string, string> }).plugin_docs?.publicProjects).toBe(
+      'doc_public',
+    );
     expect(typeof result.notes).toBe('string');
     expect((result.notes as string).length).toBeGreaterThan(0);
 

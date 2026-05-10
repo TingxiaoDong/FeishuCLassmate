@@ -16,6 +16,9 @@ TEMI_WOZ_PACKAGE            WOZ app package name (default: com.cdi.temiwoz.debug
 TEMI_WOZ_ACTIVITY           WOZ launcher activity (default: com.cdi.temiwoz.MainActivity).
 TEMI_WOZ_PRELAUNCH_WAIT_S   Wait seconds after am start before WS connect (default: 2.0).
 TEMI_IDLE_TIMEOUT_S         Auto-shutdown timeout after no command (default: 300).
+TEMI_ASR_WEBHOOK_URL      If set, POST JSON to this URL on each WOZ ``onASRCompleted`` (user speech).
+TEMI_ASR_WEBHOOK_SECRET   Optional shared secret sent as header ``X-Temi-ASR-Secret``.
+TEMI_ASR_REFRESH_IDLE     If ``1`` (default), each ASR forward counts as activity for idle shutdown.
 LOG_LEVEL     Python logging level string, e.g. DEBUG / INFO / WARNING (default: INFO).
 """
 
@@ -30,10 +33,11 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Literal
 
+import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from adapters.temi import TemiWebSocketClient, resolve_location
+from adapters.temi import TemiWebSocketClient, extract_asr_text_from_woz, resolve_location
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -63,6 +67,10 @@ TEMI_IDLE_TIMEOUT_S: float = float(os.getenv("TEMI_IDLE_TIMEOUT_S", "300"))
 
 _mock_env = os.getenv("TEMI_MOCK", "")
 _FORCE_MOCK: bool = bool(_mock_env and _mock_env != "0")
+
+TEMI_ASR_WEBHOOK_URL: str = os.getenv("TEMI_ASR_WEBHOOK_URL", "").strip()
+_asr_refresh = os.getenv("TEMI_ASR_REFRESH_IDLE", "1").strip().lower()
+TEMI_ASR_REFRESH_IDLE: bool = _asr_refresh not in {"0", "false", "no", "off"}
 
 # ---------------------------------------------------------------------------
 # Application state
@@ -100,6 +108,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _state.mock_mode = True
     else:
         logger.info("Connecting to Temi at %s:%d …", TEMI_IP, TEMI_PORT)
+        asr_hook = _handle_asr_completed if TEMI_ASR_WEBHOOK_URL else None
+        if asr_hook:
+            logger.info("ASR webhook enabled → %s", TEMI_ASR_WEBHOOK_URL[:80] + ("…" if len(TEMI_ASR_WEBHOOK_URL) > 80 else ""))
         _state.client = TemiWebSocketClient(
             TEMI_IP,
             TEMI_PORT,
@@ -109,6 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             woz_package=TEMI_WOZ_PACKAGE,
             woz_activity=TEMI_WOZ_ACTIVITY,
             prelaunch_wait_s=TEMI_WOZ_PRELAUNCH_WAIT_S,
+            on_asr_completed=asr_hook,
         )
         ok = await _state.client.connect()
         if ok:
@@ -174,6 +186,41 @@ async def _shutdown() -> None:
 def _mark_command_activity() -> None:
     """Record that a control command was received."""
     _state.last_command_at_monotonic = time.monotonic()
+
+
+async def _handle_asr_completed(data: dict[str, Any]) -> None:
+    """Forward Temi user-speech (ASR) events to the lab backend via HTTP POST."""
+    url = TEMI_ASR_WEBHOOK_URL
+    if not url:
+        return
+
+    text = extract_asr_text_from_woz(data)
+    payload: dict[str, Any] = {
+        "event": "onASRCompleted",
+        "text": text,
+        "raw": data,
+    }
+    headers = {"Content-Type": "application/json"}
+    secret = os.getenv("TEMI_ASR_WEBHOOK_SECRET", "").strip()
+    if secret:
+        headers["X-Temi-ASR-Secret"] = secret
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            logger.warning(
+                "[ASR webhook] HTTP %s: %s",
+                resp.status_code,
+                (resp.text or "")[:500],
+            )
+        else:
+            logger.info("[ASR webhook] forwarded ok text=%r", text)
+    except Exception as exc:
+        logger.warning("[ASR webhook] POST failed: %s", exc)
+
+    if TEMI_ASR_REFRESH_IDLE:
+        _mark_command_activity()
 
 
 async def _idle_shutdown_watchdog() -> None:
@@ -391,6 +438,7 @@ async def health() -> dict[str, Any]:
         "status": "ok",
         "mock": _is_mock(),
         "connected": _state.connected,
+        "asr_webhook_configured": bool(TEMI_ASR_WEBHOOK_URL),
     }
 
 

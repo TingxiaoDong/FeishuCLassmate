@@ -57,7 +57,42 @@ pip install -e ".[dev]"
 | `TEMI_WOZ_ACTIVITY` | `com.cdi.temiwoz.MainActivity` | WOZ launcher activity                |
 | `TEMI_WOZ_PRELAUNCH_WAIT_S` | `2.0` | Wait time (seconds) after `am start` before WS connect |
 | `TEMI_IDLE_TIMEOUT_S` | `300` | Auto-exit sidecar when no control command is received within this many seconds (`0` to disable) |
+| `TEMI_ASR_WEBHOOK_URL` | _(none)_ | If set (real mode only), each WOZ `onASRCompleted` is POSTed to this URL as JSON for backend processing |
+| `TEMI_ASR_WEBHOOK_SECRET` | _(none)_ | Optional; when set, sent as header `X-Temi-ASR-Secret` on ASR webhook POSTs |
+| `TEMI_ASR_REFRESH_IDLE` | `1` | If `1`, each ASR webhook attempt counts as activity for `TEMI_IDLE_TIMEOUT_S` (`0` to disable) |
 | `LOG_LEVEL`   | `INFO`   | Python logging level (`DEBUG` / `INFO` / `WARNING` / `ERROR`)    |
+
+### User speech → backend (ASR webhook)
+
+When the WOZ app on Temi finishes speech recognition, it emits WebSocket JSON with `event: onASRCompleted`. If `TEMI_ASR_WEBHOOK_URL` is set **before** the sidecar connects to the robot, the sidecar POSTs a payload to your backend:
+
+```json
+{
+  "event": "onASRCompleted",
+  "text": "<best-effort extracted string or null>",
+  "raw": { }
+}
+```
+
+`raw` is the full WOZ message so you can parse vendor-specific fields. Start listening on the robot with `POST /wakeup` and/or `POST /ask` as documented for your WOZ build.
+
+`GET /` includes `asr_webhook_configured: true|false` so you can confirm the URL was picked up at startup (changing env requires restart).
+
+### ASR → OpenClaw（语音驱动 agent）
+
+仓库根目录提供 **`scripts/asr-openclaw-bridge.mjs`**：与本机 OpenClaw Gateway 配合，把 sidecar 转发的 ASR JSON 交给 `openclaw agent` 跑一轮（工具 / skills 与飞书会话一致），并可把助手回复 **POST 到 `temi-sidecar` 的 `/speak`**，让 Temi 用 TTS 念出来。
+
+1. 启动 Gateway（`openclaw health` 正常）。
+2. 终端 A：`pnpm asr-openclaw-bridge`（或 `node scripts/asr-openclaw-bridge.mjs`）。可选环境变量见脚本文件头注释。
+3. 终端 B：sidecar 指向桥接地址，例如  
+   `export TEMI_ASR_WEBHOOK_URL=http://127.0.0.1:19889/`  
+   （若设 `TEMI_ASR_WEBHOOK_SECRET`，桥接进程需使用**相同**变量校验请求头。）
+4. 可选：让机器人念回复 ——  
+   `export OPENCLAW_ASR_SPEAK_BASE=http://127.0.0.1:8091`  
+   （与 sidecar 同源；`/speak` 单次最多约 500 字，长回复会被截断。）
+5. 唤醒后对 Temi 说话；WOZ 发出 `onASRCompleted` 后，桥接日志应出现 ASR 摘要，随后为 agent 状态。
+
+默认使用 `--agent main --channel feishu`；需绑定飞书会话时可设置 `OPENCLAW_ASR_SESSION_ID`，或按需打开 `OPENCLAW_ASR_DELIVER` 与 `OPENCLAW_ASR_REPLY_*`（见 `openclaw agent --help`）。
 
 ---
 

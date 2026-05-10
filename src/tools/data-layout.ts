@@ -29,6 +29,8 @@ const Output = z.object({
       ),
     }),
   ),
+  /** 插件配置的 Doc token/链接(publicProjects、tourTemplate 等),便于导览等 skill 使用 */
+  plugin_docs: z.record(z.string(), z.string()).optional(),
   notes: z.string(),
 });
 
@@ -58,9 +60,19 @@ export function registerDataLayout(api: OpenClawPluginApi): void {
         };
       }
 
+      const plugin_docs: Record<string, string> = {};
+      if (cfg.docs.publicProjects) plugin_docs.publicProjects = cfg.docs.publicProjects;
+      if (cfg.docs.privateProjects) plugin_docs.privateProjects = cfg.docs.privateProjects;
+      if (cfg.docs.researchReports) plugin_docs.researchReports = cfg.docs.researchReports;
+      if (cfg.docs.dailyRecord) plugin_docs.dailyRecord = cfg.docs.dailyRecord;
+      if (cfg.docs.dailyRecordShortTerm) plugin_docs.dailyRecordShortTerm = cfg.docs.dailyRecordShortTerm;
+      if (cfg.docs.dailyRecordLongTerm) plugin_docs.dailyRecordLongTerm = cfg.docs.dailyRecordLongTerm;
+      if (cfg.docs.tourTemplate) plugin_docs.tourTemplate = cfg.docs.tourTemplate;
+
       return {
         app_token: cfg.bitable.appToken,
         tables,
+        plugin_docs: Object.keys(plugin_docs).length > 0 ? plugin_docs : undefined,
         notes: [
           '使用 @larksuite/openclaw-lark 的 feishu_bitable_app_table_record 直接读写记录。',
           '人员 (User, type=11) 字段值格式: [{"id": "ou_xxx"}]。',
