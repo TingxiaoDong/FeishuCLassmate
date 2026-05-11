@@ -9,6 +9,16 @@ TEMI_MOCK     If set to any non-empty, non-"0" value, run in mock mode from star
 TEMI_IP       Temi robot IP address (required in real mode).
 TEMI_PORT     Temi WebSocket port (default: 8175).
 SIDECAR_PORT  Port this HTTP server listens on (default: 8091; used by run block only).
+TEMI_WOZ_PRELAUNCH          Enable adb prelaunch before WS connect (default: 1).
+TEMI_ADB_COMMAND            adb executable path/name (default: adb).
+TEMI_ADB_PORT               adb TCP port on Temi (default: 5555).
+TEMI_WOZ_PACKAGE            WOZ app package name (default: com.cdi.temiwoz.debug).
+TEMI_WOZ_ACTIVITY           WOZ launcher activity (default: com.cdi.temiwoz.MainActivity).
+TEMI_WOZ_PRELAUNCH_WAIT_S   Wait seconds after am start before WS connect (default: 2.0).
+TEMI_IDLE_TIMEOUT_S         Auto-shutdown timeout after no command (default: 300).
+TEMI_ASR_WEBHOOK_URL      If set, POST JSON to this URL on each WOZ ``onASRCompleted`` (user speech).
+TEMI_ASR_WEBHOOK_SECRET   Optional shared secret sent as header ``X-Temi-ASR-Secret``.
+TEMI_ASR_REFRESH_IDLE     If ``1`` (default), each ASR forward counts as activity for idle shutdown.
 LOG_LEVEL     Python logging level string, e.g. DEBUG / INFO / WARNING (default: INFO).
 """
 
@@ -23,10 +33,11 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Literal
 
+import httpx
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-from adapters.temi import TemiWebSocketClient, resolve_location
+from adapters.temi import TemiWebSocketClient, extract_asr_text_from_woz, resolve_location
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -45,9 +56,21 @@ logger = logging.getLogger("temi-sidecar")
 TEMI_IP: str = os.getenv("TEMI_IP", "")
 TEMI_PORT: int = int(os.getenv("TEMI_PORT", "8175"))
 SIDECAR_PORT: int = int(os.getenv("SIDECAR_PORT", "8091"))
+TEMI_ADB_COMMAND: str = os.getenv("TEMI_ADB_COMMAND", "adb")
+TEMI_ADB_PORT: int = int(os.getenv("TEMI_ADB_PORT", "5555"))
+TEMI_WOZ_PACKAGE: str = os.getenv("TEMI_WOZ_PACKAGE", "com.cdi.temiwoz.debug")
+TEMI_WOZ_ACTIVITY: str = os.getenv("TEMI_WOZ_ACTIVITY", "com.cdi.temiwoz.MainActivity")
+TEMI_WOZ_PRELAUNCH_WAIT_S: float = float(os.getenv("TEMI_WOZ_PRELAUNCH_WAIT_S", "2.0"))
+_woz_prelaunch_env = os.getenv("TEMI_WOZ_PRELAUNCH", "1").strip().lower()
+TEMI_WOZ_PRELAUNCH: bool = _woz_prelaunch_env not in {"0", "false", "no", "off"}
+TEMI_IDLE_TIMEOUT_S: float = float(os.getenv("TEMI_IDLE_TIMEOUT_S", "300"))
 
 _mock_env = os.getenv("TEMI_MOCK", "")
 _FORCE_MOCK: bool = bool(_mock_env and _mock_env != "0")
+
+TEMI_ASR_WEBHOOK_URL: str = os.getenv("TEMI_ASR_WEBHOOK_URL", "").strip()
+_asr_refresh = os.getenv("TEMI_ASR_REFRESH_IDLE", "1").strip().lower()
+TEMI_ASR_REFRESH_IDLE: bool = _asr_refresh not in {"0", "false", "no", "off"}
 
 # ---------------------------------------------------------------------------
 # Application state
@@ -62,6 +85,9 @@ class AppState:
         self.position: dict[str, float] = {"x": 1.2, "y": 0.5}
         self.is_moving: bool = False
         self.connected: bool = False
+        self.last_command_at_monotonic: float = time.monotonic()
+        self.idle_watchdog_task: asyncio.Task[None] | None = None
+        self.shutdown_started: bool = False
 
 
 _state = AppState()
@@ -82,10 +108,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         _state.mock_mode = True
     else:
         logger.info("Connecting to Temi at %s:%d …", TEMI_IP, TEMI_PORT)
-        _state.client = TemiWebSocketClient(TEMI_IP, TEMI_PORT)
+        asr_hook = _handle_asr_completed if TEMI_ASR_WEBHOOK_URL else None
+        if asr_hook:
+            logger.info("ASR webhook enabled → %s", TEMI_ASR_WEBHOOK_URL[:80] + ("…" if len(TEMI_ASR_WEBHOOK_URL) > 80 else ""))
+        _state.client = TemiWebSocketClient(
+            TEMI_IP,
+            TEMI_PORT,
+            prelaunch_woz=TEMI_WOZ_PRELAUNCH,
+            adb_command=TEMI_ADB_COMMAND,
+            adb_port=TEMI_ADB_PORT,
+            woz_package=TEMI_WOZ_PACKAGE,
+            woz_activity=TEMI_WOZ_ACTIVITY,
+            prelaunch_wait_s=TEMI_WOZ_PRELAUNCH_WAIT_S,
+            on_asr_completed=asr_hook,
+        )
         ok = await _state.client.connect()
         if ok:
             _state.connected = True
+            _mark_command_activity()
             logger.info("Temi connected successfully")
         else:
             logger.warning(
@@ -95,6 +135,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             )
             _state.mock_mode = True
             _state.client = None
+
+    if not _state.mock_mode and TEMI_IDLE_TIMEOUT_S > 0:
+        _state.idle_watchdog_task = asyncio.create_task(_idle_shutdown_watchdog())
+        logger.info(
+            "Idle shutdown watchdog enabled: %.0fs without command triggers sidecar exit",
+            TEMI_IDLE_TIMEOUT_S,
+        )
 
     # Register graceful shutdown on SIGTERM (in addition to FastAPI's own handling)
     loop = asyncio.get_event_loop()
@@ -116,12 +163,86 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 async def _shutdown() -> None:
+    if _state.shutdown_started:
+        return
+    _state.shutdown_started = True
+
+    if _state.idle_watchdog_task and not _state.idle_watchdog_task.done():
+        _state.idle_watchdog_task.cancel()
+        try:
+            await _state.idle_watchdog_task
+        except asyncio.CancelledError:
+            pass
+        _state.idle_watchdog_task = None
+
     if _state.client:
         logger.info("Closing Temi WebSocket connection …")
         await _state.client.disconnect()
         _state.client = None
         _state.connected = False
     logger.info("Temi sidecar shut down cleanly")
+
+
+def _mark_command_activity() -> None:
+    """Record that a control command was received."""
+    _state.last_command_at_monotonic = time.monotonic()
+
+
+async def _handle_asr_completed(data: dict[str, Any]) -> None:
+    """Forward Temi user-speech (ASR) events to the lab backend via HTTP POST."""
+    url = TEMI_ASR_WEBHOOK_URL
+    if not url:
+        return
+
+    text = extract_asr_text_from_woz(data)
+    payload: dict[str, Any] = {
+        "event": "onASRCompleted",
+        "text": text,
+        "raw": data,
+    }
+    headers = {"Content-Type": "application/json"}
+    secret = os.getenv("TEMI_ASR_WEBHOOK_SECRET", "").strip()
+    if secret:
+        headers["X-Temi-ASR-Secret"] = secret
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            logger.warning(
+                "[ASR webhook] HTTP %s: %s",
+                resp.status_code,
+                (resp.text or "")[:500],
+            )
+        else:
+            logger.info("[ASR webhook] forwarded ok text=%r", text)
+    except Exception as exc:
+        logger.warning("[ASR webhook] POST failed: %s", exc)
+
+    if TEMI_ASR_REFRESH_IDLE:
+        _mark_command_activity()
+
+
+async def _idle_shutdown_watchdog() -> None:
+    """Exit sidecar after prolonged command inactivity."""
+    check_interval_s = 5.0
+    try:
+        while True:
+            await asyncio.sleep(check_interval_s)
+            idle_for_s = time.monotonic() - _state.last_command_at_monotonic
+            if idle_for_s < TEMI_IDLE_TIMEOUT_S:
+                continue
+
+            logger.warning(
+                "No control command for %.0fs (threshold %.0fs); disconnecting WS and exiting sidecar",
+                idle_for_s,
+                TEMI_IDLE_TIMEOUT_S,
+            )
+            await _shutdown()
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+    except asyncio.CancelledError:
+        return
 
 
 # ---------------------------------------------------------------------------
@@ -250,86 +371,58 @@ class GestureResponse(BaseModel):
     error: str | None = None
 
 
-# ---- Movement extensions ----
-class TurnRequest(BaseModel):
-    degrees: int = Field(..., description="Rotation angle in degrees. Positive=left, negative=right.")
-    speed: float = Field(default=0.5, ge=0.0, le=1.0, description="Rotation speed [0, 1]")
-
-
-class TurnResponse(BaseModel):
-    ok: bool
-    message: str = ""
-    mock: bool = False
-
-
-class TiltRequest(BaseModel):
-    degrees: int = Field(..., ge=-30, le=55, description="Absolute tilt angle [-30=down, +55=up]")
-    speed: float = Field(default=0.5, ge=0.0, le=1.0, description="Tilt speed [0, 1]")
-
-
-class TiltResponse(BaseModel):
-    ok: bool
-    message: str = ""
-    mock: bool = False
-
-
-class MoveRequest(BaseModel):
-    x: float = Field(default=0.0, ge=-1.0, le=1.0, description="Forward/back speed [-1, 1]")
-    y: float = Field(default=0.0, ge=-1.0, le=1.0, description="Left/right speed [-1, 1] (positive=left)")
-    smart: bool = Field(default=False, description="Enable obstacle avoidance (firmware 0.10.79+)")
-
-
-class MoveResponse(BaseModel):
-    ok: bool
-    message: str = ""
-    mock: bool = False
-
-
 class AskRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=500, description="Question text for temi to ask")
+    sentence: str = Field(..., min_length=1, max_length=500)
 
 
 class AskResponse(BaseModel):
     ok: bool
+    reply: str | None = None
     mock: bool = False
     error: str | None = None
 
 
-class WakeupResponse(BaseModel):
+class OpenUrlRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048)
+    command: Literal["openURL", "interface"] = "openURL"
+
+
+class CommandResponse(BaseModel):
     ok: bool
-    mock: bool = False
-
-
-class FollowResponse(BaseModel):
-    ok: bool
-    message: str = ""
-    mock: bool = False
-
-
-class DetectionResponse(BaseModel):
-    ok: bool
-    message: str = ""
-    mock: bool = False
-
-
-class SaveLocationRequest(BaseModel):
-    name: str = Field(..., min_length=1, description="Name for the saved location")
-
-
-class SaveLocationResponse(BaseModel):
-    ok: bool
-    message: str = ""
     mock: bool = False
     error: str | None = None
 
 
-class DeleteLocationRequest(BaseModel):
-    name: str = Field(..., min_length=1, description="Name of the location to delete")
+class TurnRequest(BaseModel):
+    angle: float = Field(..., ge=-360, le=360)
 
 
-class DeleteLocationResponse(BaseModel):
+class TiltRequest(BaseModel):
+    angle: float = Field(..., ge=-30, le=60)
+
+
+class LocationNameRequest(BaseModel):
+    location_name: str = Field(..., min_length=1, max_length=100)
+
+
+class CallRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=200)
+
+
+class ContactResponse(BaseModel):
     ok: bool
-    message: str = ""
+    contacts: list[dict[str, Any]]
+    mock: bool = False
+    error: str | None = None
+
+
+class ToggleRequest(BaseModel):
+    on: bool
+
+
+class CheckStateResponse(BaseModel):
+    ok: bool
+    value: bool | None = None
     mock: bool = False
     error: str | None = None
 
@@ -345,6 +438,7 @@ async def health() -> dict[str, Any]:
         "status": "ok",
         "mock": _is_mock(),
         "connected": _state.connected,
+        "asr_webhook_configured": bool(TEMI_ASR_WEBHOOK_URL),
     }
 
 
@@ -355,6 +449,7 @@ async def health() -> dict[str, Any]:
 @app.post("/goto", response_model=GotoResponse)
 async def goto(req: GotoRequest) -> GotoResponse:
     """Navigate Temi to a saved location by name."""
+    _mark_command_activity()
     if _is_mock():
         resolved = resolve_location(req.location)
         logger.info("[mock] /goto location=%r → %r", req.location, resolved)
@@ -385,6 +480,7 @@ async def goto(req: GotoRequest) -> GotoResponse:
 @app.post("/speak", response_model=SpeakResponse)
 async def speak(req: SpeakRequest) -> SpeakResponse:
     """Send TTS command to Temi."""
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /speak text=%r voice=%r", req.text, req.voice)
         return SpeakResponse(ok=True, mock=True)
@@ -405,6 +501,7 @@ async def speak(req: SpeakRequest) -> SpeakResponse:
 @app.post("/stop", response_model=StopResponse)
 async def stop(req: StopRequest) -> StopResponse:
     """Stop all Temi motion."""
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /stop immediate=%r", req.immediate)
         _state.is_moving = False
@@ -431,6 +528,7 @@ async def detect_person(req: DetectPersonRequest) -> DetectPersonResponse:
     Phase 1: always returns open_id=null (no vision pipeline yet).
     Phase 2: will integrate face / badge recognition.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /detect-person timeout_ms=%d", req.timeout_ms)
         return DetectPersonResponse(open_id=None, confidence=0.0, mock=True)
@@ -476,6 +574,7 @@ async def rfid_scan(req: RfidScanRequest) -> RfidScanResponse:
     Phase 2 feature — real mode raises NotImplementedError (returned as error payload).
     Mock mode returns plausible sample data.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /rfid-scan route=%r", req.route)
         mock_tags = [
@@ -512,6 +611,7 @@ async def monitor_focus(req: MonitorFocusRequest) -> MonitorFocusResponse:
     Phase 2 feature — real mode returns an error.
     Mock mode produces a realistic mostly-focused pattern with a dip in the middle.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info(
             "[mock] /monitor-focus open_id=%r duration_s=%d",
@@ -563,233 +663,8 @@ def _generate_mock_focus_samples(duration_s: int) -> list[FocusSample]:
 
 
 # ---------------------------------------------------------------------------
-# /turn
-# ---------------------------------------------------------------------------
-
-@app.post("/turn", response_model=TurnResponse)
-async def turn(req: TurnRequest) -> TurnResponse:
-    """Rotate the robot by a given angle (positive=left, negative=right)."""
-    if _is_mock():
-        logger.info("[mock] /turn degrees=%d speed=%.2f", req.degrees, req.speed)
-        return TurnResponse(ok=True, message=f"(mock) Temi 向{'左' if req.degrees > 0 else '右'}转 {abs(req.degrees)}°", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.turnBy(req.degrees, req.speed)
-        direction = "左" if req.degrees > 0 else "右"
-        return TurnResponse(
-            ok=ok,
-            message=f"Temi 向{direction}转 {abs(req.degrees)}°" if ok else "Rotation failed",
-        )
-    except Exception as exc:
-        logger.exception("/turn failed")
-        return TurnResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /tilt
-# ---------------------------------------------------------------------------
-
-@app.post("/tilt", response_model=TiltResponse)
-async def tilt(req: TiltRequest) -> TiltResponse:
-    """Tilt the robot head to an absolute angle (-30 ~ 55)."""
-    if _is_mock():
-        direction = "抬头" if req.degrees > 0 else "低头"
-        logger.info("[mock] /tilt degrees=%d speed=%.2f", req.degrees, req.speed)
-        return TiltResponse(ok=True, message=f"(mock) Temi {direction}至 {req.degrees}°", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.tiltAngle(req.degrees, req.speed)
-        direction = "抬头" if req.degrees > 0 else "低头"
-        return TiltResponse(
-            ok=ok,
-            message=f"Temi {direction}至 {req.degrees}°" if ok else "Tilt failed",
-        )
-    except Exception as exc:
-        logger.exception("/tilt failed")
-        return TiltResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /move
-# ---------------------------------------------------------------------------
-
-@app.post("/move", response_model=MoveResponse)
-async def move(req: MoveRequest) -> MoveResponse:
-    """Omni-directional movement via skidJoy (x=forward/back, y=left/right)."""
-    if _is_mock():
-        logger.info("[mock] /move x=%.2f y=%.2f smart=%s", req.x, req.y, req.smart)
-        parts = []
-        if req.x > 0: parts.append("前进")
-        elif req.x < 0: parts.append("后退")
-        if req.y > 0: parts.append("向左")
-        elif req.y < 0: parts.append("向右")
-        msg = "(mock) Temi " + ("、".join(parts) if parts else "静止")
-        return MoveResponse(ok=True, message=msg, mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.skidJoy(req.x, req.y, req.smart)
-        parts = []
-        if req.x > 0: parts.append("前进")
-        elif req.x < 0: parts.append("后退")
-        if req.y > 0: parts.append("向左")
-        elif req.y < 0: parts.append("向右")
-        msg = "、".join(parts) if parts else "移动完成"
-        return MoveResponse(ok=ok, message=msg)
-    except Exception as exc:
-        logger.exception("/move failed")
-        return MoveResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /ask
-# ---------------------------------------------------------------------------
-
-@app.post("/ask", response_model=AskResponse)
-async def ask(req: AskRequest) -> AskResponse:
-    """Send a question to temi and wait for the user's voice response."""
-    if _is_mock():
-        logger.info("[mock] /ask text=%r", req.text)
-        return AskResponse(ok=True, mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.askQuestion(req.text)
-        return AskResponse(ok=ok, error=None if ok else "askQuestion failed")
-    except Exception as exc:
-        logger.exception("/ask failed")
-        return AskResponse(ok=False, error=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /wakeup
-# ---------------------------------------------------------------------------
-
-@app.post("/wakeup", response_model=WakeupResponse)
-async def wakeup() -> WakeupResponse:
-    """Wake up temi (activate listening / come out of sleep)."""
-    if _is_mock():
-        logger.info("[mock] /wakeup")
-        return WakeupResponse(ok=True, mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.wakeup()
-        return WakeupResponse(ok=ok)
-    except Exception as exc:
-        logger.exception("/wakeup failed")
-        return WakeupResponse(ok=False)
-
-
-# ---------------------------------------------------------------------------
-# /follow-start  /follow-stop
-# ---------------------------------------------------------------------------
-
-@app.post("/follow-start", response_model=FollowResponse)
-async def follow_start() -> FollowResponse:
-    """Start follow-me mode."""
-    if _is_mock():
-        logger.info("[mock] /follow-start")
-        return FollowResponse(ok=True, message="(mock) Temi 进入跟随模式", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.startFollow()
-        return FollowResponse(ok=ok, message="Temi 进入跟随模式" if ok else "Follow start failed")
-    except Exception as exc:
-        logger.exception("/follow-start failed")
-        return FollowResponse(ok=False, message=str(exc))
-
-
-@app.post("/follow-stop", response_model=FollowResponse)
-async def follow_stop() -> FollowResponse:
-    """Stop follow-me mode."""
-    if _is_mock():
-        logger.info("[mock] /follow-stop")
-        return FollowResponse(ok=True, message="(mock) Temi 退出跟随模式", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.stopFollow()
-        return FollowResponse(ok=ok, message="Temi 退出跟随模式" if ok else "Follow stop failed")
-    except Exception as exc:
-        logger.exception("/follow-stop failed")
-        return FollowResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /detection-start  /detection-stop
-# ---------------------------------------------------------------------------
-
-@app.post("/detection-start", response_model=DetectionResponse)
-async def detection_start() -> DetectionResponse:
-    """Start people detection."""
-    if _is_mock():
-        logger.info("[mock] /detection-start")
-        return DetectionResponse(ok=True, message="(mock) 人员检测已开启", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.startDetecting()
-        return DetectionResponse(ok=ok, message="人员检测已开启" if ok else "Detection start failed")
-    except Exception as exc:
-        logger.exception("/detection-start failed")
-        return DetectionResponse(ok=False, message=str(exc))
-
-
-@app.post("/detection-stop", response_model=DetectionResponse)
-async def detection_stop() -> DetectionResponse:
-    """Stop people detection."""
-    if _is_mock():
-        logger.info("[mock] /detection-stop")
-        return DetectionResponse(ok=True, message="(mock) 人员检测已关闭", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.stopDetecting()
-        return DetectionResponse(ok=ok, message="人员检测已关闭" if ok else "Detection stop failed")
-    except Exception as exc:
-        logger.exception("/detection-stop failed")
-        return DetectionResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
-# /save-location  /delete-location
-# ---------------------------------------------------------------------------
-
-@app.post("/save-location", response_model=SaveLocationResponse)
-async def save_location(req: SaveLocationRequest) -> SaveLocationResponse:
-    """Save the current position as a named location."""
-    if _is_mock():
-        logger.info("[mock] /save-location name=%r", req.name)
-        return SaveLocationResponse(ok=True, message=f"(mock) 位置已保存为「{req.name}」", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.saveLocation(req.name)
-        return SaveLocationResponse(
-            ok=ok,
-            message=f"位置已保存为「{req.name}」" if ok else "Save location failed",
-        )
-    except Exception as exc:
-        logger.exception("/save-location failed")
-        return SaveLocationResponse(ok=False, message=str(exc))
-
-
-@app.post("/delete-location", response_model=DeleteLocationResponse)
-async def delete_location(req: DeleteLocationRequest) -> DeleteLocationResponse:
-    """Delete a saved location by name."""
-    if _is_mock():
-        logger.info("[mock] /delete-location name=%r", req.name)
-        return DeleteLocationResponse(ok=True, message=f"(mock) 已删除位置「{req.name}」", mock=True)
-    assert _state.client is not None
-    try:
-        ok = await _state.client.deleteLocation(req.name)
-        return DeleteLocationResponse(
-            ok=ok,
-            message=f"已删除位置「{req.name}」" if ok else "Delete location failed",
-        )
-    except Exception as exc:
-        logger.exception("/delete-location failed")
-        return DeleteLocationResponse(ok=False, message=str(exc))
-
-
-# ---------------------------------------------------------------------------
 # /gesture
 # ---------------------------------------------------------------------------
-
 
 @app.post("/gesture", response_model=GestureResponse)
 async def gesture(req: GestureRequest) -> GestureResponse:
@@ -798,6 +673,7 @@ async def gesture(req: GestureRequest) -> GestureResponse:
     Phase 2 feature — real mode returns an error.
     Mock mode acknowledges immediately.
     """
+    _mark_command_activity()
     if _is_mock():
         logger.info("[mock] /gesture type=%r", req.type)
         return GestureResponse(ok=True, mock=True)
@@ -813,6 +689,248 @@ async def gesture(req: GestureRequest) -> GestureResponse:
         return GestureResponse(ok=False, error=str(exc))
 
     return GestureResponse(ok=True)
+
+
+@app.post("/ask", response_model=AskResponse)
+async def ask(req: AskRequest) -> AskResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /ask sentence=%r", req.sentence)
+        return AskResponse(ok=True, reply="(mock) 收到提问", mock=True)
+
+    assert _state.client is not None
+    try:
+        reply = await _state.client.ask(req.sentence)
+        return AskResponse(ok=True, reply=reply)
+    except Exception as exc:
+        logger.exception("/ask failed")
+        return AskResponse(ok=False, error=str(exc))
+
+
+@app.post("/open-url", response_model=CommandResponse)
+async def open_url(req: OpenUrlRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /open-url command=%r url=%r", req.command, req.url)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.open_url(req.url, command=req.command)
+        return CommandResponse(ok=ok, error=None if ok else "Open URL command failed")
+    except Exception as exc:
+        logger.exception("/open-url failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/turn", response_model=CommandResponse)
+async def turn(req: TurnRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /turn angle=%s", req.angle)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.turn(req.angle)
+        return CommandResponse(ok=ok, error=None if ok else "Turn command failed")
+    except Exception as exc:
+        logger.exception("/turn failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/tilt", response_model=CommandResponse)
+async def tilt(req: TiltRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /tilt angle=%s", req.angle)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.tilt(req.angle)
+        return CommandResponse(ok=ok, error=None if ok else "Tilt command failed")
+    except Exception as exc:
+        logger.exception("/tilt failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.get("/contacts", response_model=ContactResponse)
+async def contacts() -> ContactResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /contacts")
+        return ContactResponse(ok=True, contacts=[], mock=True)
+
+    assert _state.client is not None
+    try:
+        contacts_list = await _state.client.get_contact()
+        return ContactResponse(ok=True, contacts=contacts_list)
+    except Exception as exc:
+        logger.exception("/contacts failed")
+        return ContactResponse(ok=False, contacts=[], error=str(exc))
+
+
+@app.post("/call", response_model=CommandResponse)
+async def call(req: CallRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /call user_id=%r", req.user_id)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.call(req.user_id)
+        return CommandResponse(ok=ok, error=None if ok else "Call command failed")
+    except Exception as exc:
+        logger.exception("/call failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/wakeup", response_model=CommandResponse)
+async def wakeup() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /wakeup")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.wakeup()
+        return CommandResponse(ok=ok, error=None if ok else "Wakeup command failed")
+    except Exception as exc:
+        logger.exception("/wakeup failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/save-location", response_model=CommandResponse)
+async def save_location(req: LocationNameRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /save-location name=%r", req.location_name)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.save_location(req.location_name)
+        return CommandResponse(ok=ok, error=None if ok else "Save location command failed")
+    except Exception as exc:
+        logger.exception("/save-location failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/delete-location", response_model=CommandResponse)
+async def delete_location(req: LocationNameRequest) -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /delete-location name=%r", req.location_name)
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.delete_location(req.location_name)
+        return CommandResponse(ok=ok, error=None if ok else "Delete location command failed")
+    except Exception as exc:
+        logger.exception("/delete-location failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/stop-movement", response_model=CommandResponse)
+async def stop_movement() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /stop-movement")
+        _state.is_moving = False
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.stop_movement()
+        _state.is_moving = False
+        return CommandResponse(ok=ok, error=None if ok else "Stop movement command failed")
+    except Exception as exc:
+        logger.exception("/stop-movement failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/detection-mode/set", response_model=CheckStateResponse)
+async def set_detection_mode(req: ToggleRequest) -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /detection-mode/set on=%r", req.on)
+        return CheckStateResponse(ok=True, value=req.on, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.set_detection_mode(req.on)
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/detection-mode/set failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.get("/detection-mode/check", response_model=CheckStateResponse)
+async def check_detection_mode() -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /detection-mode/check")
+        return CheckStateResponse(ok=True, value=False, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.check_detection_mode()
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/detection-mode/check failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.post("/track-user", response_model=CheckStateResponse)
+async def track_user(req: ToggleRequest) -> CheckStateResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /track-user on=%r", req.on)
+        return CheckStateResponse(ok=True, value=req.on, mock=True)
+
+    assert _state.client is not None
+    try:
+        value = await _state.client.set_track_user_on(req.on)
+        return CheckStateResponse(ok=True, value=value)
+    except Exception as exc:
+        logger.exception("/track-user failed")
+        return CheckStateResponse(ok=False, error=str(exc))
+
+
+@app.post("/be-with-me", response_model=CommandResponse)
+async def be_with_me() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /be-with-me")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.be_with_me()
+        return CommandResponse(ok=ok, error=None if ok else "beWithMe command failed")
+    except Exception as exc:
+        logger.exception("/be-with-me failed")
+        return CommandResponse(ok=False, error=str(exc))
+
+
+@app.post("/constraint-be-with", response_model=CommandResponse)
+async def constraint_be_with() -> CommandResponse:
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /constraint-be-with")
+        return CommandResponse(ok=True, mock=True)
+
+    assert _state.client is not None
+    try:
+        ok = await _state.client.constraint_be_with()
+        return CommandResponse(ok=ok, error=None if ok else "constraintBeWith command failed")
+    except Exception as exc:
+        logger.exception("/constraint-be-with failed")
+        return CommandResponse(ok=False, error=str(exc))
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "asr-openclaw-bridge": "node scripts/asr-openclaw-bridge.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {
