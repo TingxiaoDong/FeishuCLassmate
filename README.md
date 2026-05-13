@@ -11,7 +11,7 @@
 <img src="https://img.shields.io/badge/Node-22%2B-339933?style=flat-square&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/Skills-28-blueviolet?style=flat-square" />
+<img src="https://img.shields.io/badge/Skills-31-blueviolet?style=flat-square" />
 <img src="https://img.shields.io/badge/Tables-20%2B-orange?style=flat-square" />
 <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
 
@@ -98,7 +98,7 @@
 │            idle-loop        │◄──►│ temi-sidecar (Python FastAPI)   │
 │            equipment-patrol │    │  /goto /speak /stop /rfid ...   │
 │            supervision-tick │    └──────────────┬──────────────────┘
-│  skills/   28 × SKILL.md    │                   │ WebSocket
+│  skills/   31 × SKILL.md    │                   │ WebSocket
 └─────────────────────────────┘    ┌──────────────▼──────────────────┐
                                    │       Temi Robot                │
                                    └─────────────────────────────────┘
@@ -168,7 +168,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 ## 🛠️ Skills Catalog
 
-**28 个 Agentic Skill**。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
+**31 个 Agentic Skill**。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
 
 ### 🎓 教学 / 访客
 
@@ -199,6 +199,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 | Skill | 作用 |
 |---|---|
 | [manage-papers](skills/manage-papers/SKILL.md) | arXiv 自动抓 + 本地 Papers 库 |
+| [academic-paper-search](skills/academic-paper-search/SKILL.md) | 学术文献检索专家：多平台 Query、质量评估、引用扩展与迭代（见 `references/`） |
 | [submission-tracking](skills/submission-tracking/SKILL.md) | 投稿状态机(准备中 → 已投 → 审稿 → 接收/拒/修改) |
 | [idle-research](skills/idle-research/SKILL.md) | 闲时自主研究周报 |
 
@@ -347,7 +348,7 @@ feishu-classmate/
 │   └── util/
 │       ├── register-tool.ts     # zod→TypeBox 适配器
 │       └── feishu-api.ts        # @larksuiteoapi/node-sdk 包装
-├── skills/                      # 28 × SKILL.md
+├── skills/                      # 31 × SKILL.md
 ├── temi-sidecar/                # Python FastAPI + mock
 ├── scripts/
 │   ├── smoke.sh                 # 部署冒烟
