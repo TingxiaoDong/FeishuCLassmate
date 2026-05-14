@@ -8,6 +8,10 @@ dist/
 temi-sidecar/.venv/
 temi-sidecar/__pycache__/
 temi-sidecar/**/__pycache__/
+arc-sidecar/.venv/
+arc-sidecar/__pycache__/
+arc-sidecar/**/__pycache__/
+arc-runs/
 .local/
 4.24优化建议_副本.md
 实验设计.md

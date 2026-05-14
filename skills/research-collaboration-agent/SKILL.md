@@ -34,6 +34,7 @@ feishu_classmate_data_layout()
 | 研究计划结构、任务拆解阶段 | [references/research-planning.md](references/research-planning.md) |
 | 飞书：多维表、时间线甘特、Doc、日历 | [references/feishu-gantt-lark.md](references/feishu-gantt-lark.md) |
 | 成员空闲度与学术向社交 | [references/availability-and-academic-chat.md](references/availability-and-academic-chat.md) |
+| 深度执行：交接 AutoResearchClaw 验证实验性 idea | [references/deep-execution-autoresearchclaw.md](references/deep-execution-autoresearchclaw.md) |
 | 长期记忆与行为原则（NEVER / ALWAYS） | [references/memory-and-principles.md](references/memory-and-principles.md) |
 
 ---
@@ -45,12 +46,14 @@ feishu_classmate_data_layout()
 3. **读知识库项目 + 课题发现**：先按 `topic-discovery.md` **§0** 拉齐各同学云文档项目画布，再四源汇聚，输出结构化「Potential Research Direction」块。
 4. **计划与拆解**：按 `research-planning.md` 生成 Research Goal → Milestones → 工作包（Literature / System / Impl / Exp / Viz / Writing）。
 5. **落库与视图**：按 `feishu-gantt-lark.md` 写任务行、依赖、负责人；创建或调整 **Bitable Timeline（时间线）视图** 作为甘特呈现。
-6. **触达人之前**：按 `availability-and-academic-chat.md`，先调 **Temi sidecar `POST /photo`**（与 `plugins...config.temi.sidecarUrl` 对齐）得到 `availability_hint` 等，再估算 `availability_score`；**不要**用飞书用户状态/日历推断「同学是否空闲」。
-7. **记忆**：会话末按 `memory-and-principles.md` 更新工作区 `memory/YYYY-MM-DD.md`（或项目约定路径），区分 Research / Social / Project 记忆块。
+6. **深度验证（可选）**：若 idea 已成形（有 Hypothesis / Technical Route）且用户要真正跑实验验证，按 `deep-execution-autoresearchclaw.md` 用 `feishu_classmate_research_arc_*` 交接给 AutoResearchClaw 跑 23-stage 验证，并把 run_id / 结果回写 `research` 表与飞书 Doc。
+7. **触达人之前**：按 `availability-and-academic-chat.md`，先调 **Temi sidecar `POST /photo`**（与 `plugins...config.temi.sidecarUrl` 对齐）得到 `availability_hint` 等，再估算 `availability_score`；**不要**用飞书用户状态/日历推断「同学是否空闲」。
+8. **记忆**：会话末按 `memory-and-principles.md` 更新工作区 `memory/YYYY-MM-DD.md`（或项目约定路径），区分 Research / Social / Project 记忆块。
 
 ---
 
-## 与 manage-project 的分工
+## 分工与交接
 
 - **`manage-project`**：偏「已立项项目」的日常录入、进度检查、周报与帮扶流程（见该 skill 的 references）。
-- **本 skill**：偏「0→1 预研」「跨方向脑暴」「研究计划与学术社交节奏」；**一旦项目进入稳定执行管线**，应引导或交接到 `manage-project`，避免两套流程并行打架。
+- **AutoResearchClaw（ARC）**：偏「跑实验、验证 idea 成不成立」的重型执行 —— 23-stage 流水线出论文/实验/审稿。通过 `arc-sidecar/` 异步驱动，见 `deep-execution-autoresearchclaw.md`。
+- **本 skill**：偏「0→1 预研」「跨方向脑暴」「研究计划与学术社交节奏」。规划成形 → 需要验证就交接 **ARC**；项目进入稳定执行管线 → 引导或交接到 **`manage-project`**，避免多套流程并行打架。

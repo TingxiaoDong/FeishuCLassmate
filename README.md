@@ -57,43 +57,11 @@
 
 ## 🏗️ Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  飞书 / Lark  ·  群聊 / 私信 / 多维表格 / 文档 / Drive / Calendar      │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │ WebSocket 长连接
-┌───────────────────────────────▼──────────────────────────────────────┐
-│  @larksuite/openclaw-lark       ← 官方通道插件(零代码)               │
-│    · 消息收发 / Card / OAuth / Bitable / Doc / Drive / Calendar 工具  │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-┌───────────────────────────────▼──────────────────────────────────────┐
-│  OpenClaw core  ·  agent 会话 / 工具调度 / skill 注入                  │
-│    model endpoint → http://127.0.0.1:30000/v1  (MetaClaw)             │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │ OpenAI 兼容
-┌───────────────────────────────▼──────────────────────────────────────┐
-│  MetaClaw proxy  ·  skills 模式                                       │
-│    · skill_manager → 每轮注入相关 SKILL.md                            │
-│    · memory layer → 跨会话 facts / preferences / project history     │
-│    · 会话结束自动 summarize 成新 skill                                │
-└───────────────────────────────┬──────────────────────────────────────┘
-                                │
-                 ┌──────────────┴─────────────────┐
-                 │                                │
-┌────────────────▼────────────┐    ┌──────────────▼──────────────────┐
-│ feishu-classmate 插件       │    │  真实 LLM                        │
-│                             │    │  (Anthropic / OpenAI / …)        │
-│  tools/    temi/ supervisor/│    └─────────────────────────────────┘
-│            chat/ research/  │
-│  services/ project-scheduler │    ┌─────────────────────────────────┐
-│                              │◄──►│ temi-sidecar (Python FastAPI)   │
-│                              │    │  /goto /speak /stop /photo …   │
-└─────────────────────────────┘    └──────────────┬──────────────────┘
-                                   ┌──────────────▼──────────────────┐
-                                   │       Temi Robot                │
-                                   └─────────────────────────────────┘
-```
+![飞书同学系统架构](assets/architecture.png)
+
+完整六层链路:**飞书/Lark 通道** → **openclaw-lark 官方通道插件** → **OpenClaw 核心** → **MetaClaw 代理(skills 模式,可选)** → **feishu-classmate 业务插件** → **temi-sidecar 网关 + Temi 机器人**,底座是 20+ 飞书多维表。
+
+右侧是 **MetaClaw 自进化闭环(skill-only)**:技能注入 → 真实对话 → 跨会话记忆 → 会话结束总结 → 沉淀新 SKILL.md 写回技能库 → 闭环。纯技能进化,**不走 RL 训练**,会话本身就是学习信号。
 
 ---
 
@@ -203,6 +171,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 | `supervision` | `start` / `tick` / `summarize` | 有状态的监督会话(内存) |
 | `chat` | `pick_topic` / `should_engage` | 闲聊触发冷却 |
 | `research` | `search_works` | arXiv 搜索 |
+| `research/arc` | `arc_start` / `arc_status` / `arc_fetch` | 异步驱动 AutoResearchClaw 验证实验性 idea(见下节) |
 
 ### 官方 lark 插件 tool(数据操作主力,来自 `@larksuite/openclaw-lark`)
 
@@ -213,6 +182,31 @@ node_modules/.bin/openclaw classmate setup-bitable
 - `feishu_search_doc_wiki` / `feishu_oauth` / `feishu_ask_user_question`
 
 > **设计原则**:Bitable/Doc/Drive 读写**全部**走 lark 官方 tool。Classmate 只在 raw lark 搞不定的地方(硬件、状态、非 Feishu 服务)补位。Skill 层负责编排。
+
+---
+
+## 🔬 AutoResearchClaw 集成(验证实验性 idea)
+
+把实验室的**实验性 idea / hypothesis** 交给 [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw)(ARC)—— 它的 23-stage 流水线做真实文献检索 + sandbox 实验 + 多 agent peer review,产出 conference-ready 论文草稿作为**验证产物**。
+
+**分工**:`research-collaboration-agent` skill 做 0→1 规划(课题发现 / Research Goal / Hypothesis)→ 计划成形后交接给 ARC 做重型验证 → 完成后回写 `Research` 多维表 + 飞书 Doc → 转 `manage-project` 跟踪。
+
+**接法**:复刻 `temi-sidecar` 模式 —— ARC 较重、单次 run 是分钟~小时级,所以走**异步 sidecar**:
+
+```
+research-collaboration-agent skill
+  → feishu_classmate_research_arc_start    发起验证,立即返回 run_id
+  → feishu_classmate_research_arc_status   轮询状态
+  → feishu_classmate_research_arc_fetch    取交付物(paper / 实验 / 审稿)
+        │ HTTP
+  arc-sidecar/   (Python FastAPI shim)
+        │ spawn
+  researchclaw run --topic ...   (ARC 23-stage 流水线)
+```
+
+**默认 mock 模式**(`arc.mockMode=true` 或 `ARC_MOCK=1`)—— 不装 ARC 也能打通整条工具链路、便于开发。真实接入:装 AutoResearchClaw、`ARC_MOCK=0`、`ARC_CONFIG` 指向配好的 `config.yaml`(建议开 `openclaw_bridge` 让 ARC 复用飞书同学的 OpenClaw 能力推进度)。
+
+详见 **[arc-sidecar/README.md](arc-sidecar/README.md)** 与交接指引 **[research-collaboration-agent/references/deep-execution-autoresearchclaw.md](skills/research-collaboration-agent/references/deep-execution-autoresearchclaw.md)**。
 
 ---
 
@@ -245,6 +239,7 @@ PDF 对照审计见 **[docs/PDF_COMPLIANCE.md](docs/PDF_COMPLIANCE.md)**。
 | 3 | **MetaClaw**(可选) | 透明 LLM 代理 · skills 模式(技能注入 + 跨会话记忆) |
 | 4 | **feishu-classmate**(本仓库) | 实验室业务 + 硬件控制 |
 | 5 | **temi-sidecar**(Python FastAPI) | Temi 机器人 HTTP 网关,mock-capable |
+| 6 | **arc-sidecar**(Python FastAPI,可选) | AutoResearchClaw 异步执行网关,mock-capable |
 
 ---
 

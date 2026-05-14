@@ -16,6 +16,7 @@
     "dist/",
     "skills/",
     "temi-sidecar/",
+    "arc-sidecar/",
     "openclaw.plugin.json",
     "README.md"
   ],
