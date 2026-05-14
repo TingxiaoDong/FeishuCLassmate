@@ -35,7 +35,6 @@
 - 🤝 **科研协作**,预研课题发现、研究计划拆解、学术社交;重型验证交接 [AutoResearchClaw](#-autoresearchclaw-集成验证实验性-idea)
 - 📚 **论文检索**,多平台学术文献检索,按同学偏好记忆
 - 🤖 **控制 Temi**,自然语言指令驱动机器人
-
 ![Demo](assets/飞书同学预览.gif.gif)
 
 > 赛道:开放创新赛道。
@@ -44,21 +43,15 @@
 
 ## ✨ Features
 
-| 类别 | 功能 |
-|---|---|
-| 👋 **导览** | 5 阶段:开场白 → 实验室介绍 → 特色区域 → 工位区 → 问答 |
-| 📊 **进度管理** | 学生口述 → 甘特图生成;每日 09:00 节点 @ 提醒 |
-| 🔧 **器材管理** | 借还登记 + RFID 每日巡查 |
-| 🧘 **自我监督** | 线上 DM 定时问进度 + 线下摄像头检测专注 + 柔性干预 |
-| 💭 **闲时行动** | 自主研究周报(arXiv)+ 闲聊话题生成 |
-| 🧬 **自我进化** | 每次 tool 调用轨迹入库 + MetaClaw 技能注入 |
-| 🤖 **机器人专属** | 训练 Run、Checkpoint、Sim-to-Real Gap 追踪 |
-| 👨‍🏫 **导师视角** | Dashboard、自然语言派任务、1:1 自动议程 |
-| 👥 **协作成长** | Reading Group 轮值、师兄答疑调度、Skill Tree |
-| 📖 **知识沉淀** | Failure Museum、FAQ 搜索、Lab Meme 档案 |
-| 📝 **会议流程** | 每日 Standup、组会议程、会议纪要自动化 |
-| 📚 **学术管理** | Paper 库、实验记录、设备预约、投稿追踪、周报聚合 |
-| 🆕 **新生入职** | 12 项 Onboarding Checklist 自动跟进 |
+| 类别 | 功能 | Skill |
+|---|---|---|
+| 👋 **访客导览** | 知识库母版 + 访客背景联网搜索 → 个性化讲解稿;Temi 现场走位/播报/工位补充/问答 | `conduct-lab-tour` · `lab-tour-prepare` · `lab-tour-run` |
+| 📊 **项目管理** | 项目信息录入、甘特图自动更新、逾期智能检查、高优先级高颗粒跟踪、智能帮扶提醒 | `manage-project` |
+| 🔬 **自主研究** | 每周自动读 Lab 知识库 → 自主选题 → 联网检索前沿 → 生成研究报告 | `autonomous-research` |
+| 🤝 **科研协作** | 预研课题发现、研究计划与任务拆解、甘特时间线推进、学术社交 | `research-collaboration-agent` |
+| 🧪 **idea 验证** | 实验性 idea → [AutoResearchClaw](#-autoresearchclaw-集成验证实验性-idea) 23-stage 流水线(真实文献 + sandbox 实验 + 多 agent 审稿)→ 论文草稿作为验证产物 | `research-collaboration-agent` → `arc-sidecar` |
+| 📚 **论文检索** | 多平台学术文献检索,按同学 `open_id` 记忆论文偏好 | `academic-paper-search` |
+| 🤖 **Temi 控制** | 自然语言指令 → Temi SDK / sidecar | `temi-connector` |
 
 ---
 
