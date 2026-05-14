@@ -1,17 +1,6 @@
 ---
 name: academic-paper-search
 description: |
-  指导 OpenClaw 以学术检索专家方式工作：理解研究意图、构造学术检索式、优先使用
-  Google Scholar / Semantic Scholar / PubMed 等正规渠道、评估相关性与质量、做引用扩展
-  与迭代改Query。在用户要「找论文」「文献综述」「高被引」「谁引用了这篇」「survey」
-  「benchmark 论文」「某领域的 foundational / SOTA」或明确排除低质网页时使用。
----
-
-# 学术论文与引用检索 Skill
-
-本 skill 将 Agent 定位为 **Academic Paper Search Expert**（集成在 OpenClaw 中），
-**不是**通用网页搜索引擎；行为上接近有经验的科研助理。
-
 ## 何时读取子文档
 
 按需展开（避免一次塞满上下文）：

@@ -67,6 +67,8 @@ export interface ClassmateConfig {
     ganttCheckCron: string;
     equipmentPatrolCron: string;
     idleLoopCron: string;
+    projectProgressCheckCron: string;
+    weeklyReportCron: string;
   };
   supervision: {
     defaultIntervalMinutes: number;
@@ -116,6 +118,8 @@ export function readConfig(raw: unknown): ClassmateConfig {
       ganttCheckCron: cfg.schedules?.ganttCheckCron || '0 9 * * *',
       equipmentPatrolCron: cfg.schedules?.equipmentPatrolCron || '30 8 * * *',
       idleLoopCron: cfg.schedules?.idleLoopCron || '0 22 * * 1-5',
+      projectProgressCheckCron: cfg.schedules?.projectProgressCheckCron || '0 12 * * *',
+      weeklyReportCron: cfg.schedules?.weeklyReportCron || '0 18 * * 0',
     },
     supervision: {
       defaultIntervalMinutes: cfg.supervision?.defaultIntervalMinutes ?? 10,

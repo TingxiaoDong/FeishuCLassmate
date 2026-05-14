@@ -1,0 +1,56 @@
+---
+name: research-collaboration-agent
+description: |
+  让 OpenClaw 作为实验室「科研协作 Agent」：先读飞书云文档知识库中各同学项目文档再头脑风暴、
+  预研课题发现、研究计划与任务拆解、飞书多维表/甘特时间线推进；判断同学是否适合打扰时
+  **以 Temi sidecar 的 POST /photo 场景快照为准**，不用飞书用户在线/日历状态作空闲依据；长期记忆迭代。
+  **触发**: 「预研课题」「科研脑暴」「读知识库项目再讨论」「拆研究计划」「甘特/时间线」「谁在现场方便聊」等。
+---
+
+# 科研协作 Agent Skill
+
+本 skill 的目标**不是**泛聊天，而是：**主动发现方向、组织研究、推动项目、促进学术交流**，且与飞书数据面严格对齐。
+
+## 前置（每轮任务必须先做）
+
+```
+feishu_classmate_data_layout()
+  → { app_token, tables: { projects, gantt, research, ... }, docs: { ... } }
+```
+
+所有 Bitable 写入使用 **`@larksuite/openclaw-lark` 原生** `feishu_bitable_app_table_record` / `feishu_bitable_app_table_field` / `feishu_bitable_app_table_view`（及同族 API），**禁止**在本 skill 内手写 Open Platform HTTP；若需理解 REST 语义，仅作背景阅读，执行时一律走 Lark 工具。
+
+论文检索策略与学术源优先级见同仓库 **[academic-paper-search](../academic-paper-search/SKILL.md)**；本 skill 在「论文启发」场景下应加载该 skill 的 `references/`。
+
+课题级 arXiv 拉摘要用插件工具：`feishu_classmate_research_search_works`（topic/limit）。
+
+---
+
+## 能力地图（按需展开）
+
+| 主题 | 文件 |
+|------|------|
+| 预研课题发现（项目延伸 / 论文 / 跨方向 / 团队能力） | [references/topic-discovery.md](references/topic-discovery.md) |
+| 研究计划结构、任务拆解阶段 | [references/research-planning.md](references/research-planning.md) |
+| 飞书：多维表、时间线甘特、Doc、日历 | [references/feishu-gantt-lark.md](references/feishu-gantt-lark.md) |
+| 成员空闲度与学术向社交 | [references/availability-and-academic-chat.md](references/availability-and-academic-chat.md) |
+| 长期记忆与行为原则（NEVER / ALWAYS） | [references/memory-and-principles.md](references/memory-and-principles.md) |
+
+---
+
+## 执行总线（Agent 思考顺序）
+
+1. **澄清目标**：是「新课题脑暴」「已定题写计划」「写进甘特」「只社交触达」中的哪一种；缺信息先问一句再动手。
+2. **读布局**：`feishu_classmate_data_layout()`，确认 `projects` / `gantt` / `research` 等表与 Doc 配置是否存在。
+3. **读知识库项目 + 课题发现**：先按 `topic-discovery.md` **§0** 拉齐各同学云文档项目画布，再四源汇聚，输出结构化「Potential Research Direction」块。
+4. **计划与拆解**：按 `research-planning.md` 生成 Research Goal → Milestones → 工作包（Literature / System / Impl / Exp / Viz / Writing）。
+5. **落库与视图**：按 `feishu-gantt-lark.md` 写任务行、依赖、负责人；创建或调整 **Bitable Timeline（时间线）视图** 作为甘特呈现。
+6. **触达人之前**：按 `availability-and-academic-chat.md`，先调 **Temi sidecar `POST /photo`**（与 `plugins...config.temi.sidecarUrl` 对齐）得到 `availability_hint` 等，再估算 `availability_score`；**不要**用飞书用户状态/日历推断「同学是否空闲」。
+7. **记忆**：会话末按 `memory-and-principles.md` 更新工作区 `memory/YYYY-MM-DD.md`（或项目约定路径），区分 Research / Social / Project 记忆块。
+
+---
+
+## 与 manage-project 的分工
+
+- **`manage-project`**：偏「已立项项目」的日常录入、进度检查、周报与帮扶流程（见该 skill 的 references）。
+- **本 skill**：偏「0→1 预研」「跨方向脑暴」「研究计划与学术社交节奏」；**一旦项目进入稳定执行管线**，应引导或交接到 `manage-project`，避免两套流程并行打架。

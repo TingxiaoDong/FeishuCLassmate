@@ -11,7 +11,7 @@
 <img src="https://img.shields.io/badge/Node-22%2B-339933?style=flat-square&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/Skills-7-blueviolet?style=flat-square" />
+<img src="https://img.shields.io/badge/Skills-8-blueviolet?style=flat-square" />
 <img src="https://img.shields.io/badge/Tables-20%2B-orange?style=flat-square" />
 <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
 
@@ -94,12 +94,11 @@
 │                             │    │  (Anthropic / OpenAI / …)        │
 │  tools/    temi/ supervisor/│    └─────────────────────────────────┘
 │            chat/ research/  │
-│  services/ gantt-scheduler  │    ┌─────────────────────────────────┐
-│            idle-loop        │◄──►│ temi-sidecar (Python FastAPI)   │
-│            equipment-patrol │    │  /goto /speak /stop /rfid ...   │
-│            supervision-tick │    └──────────────┬──────────────────┘
-│  skills/   7 × SKILL.md     │                   │ WebSocket
-└─────────────────────────────┘    ┌──────────────▼──────────────────┐
+│  services/ project-scheduler │    ┌─────────────────────────────────┐
+│                              │◄──►│ temi-sidecar (Python FastAPI)   │
+│                              │    │  /goto /speak /stop /photo …   │
+└─────────────────────────────┘    └──────────────┬──────────────────┘
+                                   ┌──────────────▼──────────────────┐
                                    │       Temi Robot                │
                                    └─────────────────────────────────┘
 ```
@@ -168,7 +167,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 ## 🛠️ Skills Catalog
 
-**7 个 Agentic Skill**（与 `skills/` 目录一致；已移除未再维护的实验室扩展 skill）。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
+**8 个 Agentic Skill**（与本仓库 `skills/` 目录一致；含 `develop` 上新增的 `research-collaboration-agent`）。
 
 ### 🎓 访客导览
 
@@ -185,17 +184,18 @@ node_modules/.bin/openclaw classmate setup-bitable
 | [manage-project](skills/manage-project/SKILL.md) | 项目与进度全流程（甘特、逾期、周报等，面向 Lab 知识库） |
 | [autonomous-research](skills/autonomous-research/SKILL.md) | 基于知识库文档的自主选题、联网检索与研究报告 |
 
-### 📚 学术检索
+### 📚 学术与科研协作
 
 | Skill | 作用 |
 |---|---|
 | [academic-paper-search](skills/academic-paper-search/SKILL.md) | 学术文献检索策略、质量评估与引用扩展（见 `references/`） |
+| [research-collaboration-agent](skills/research-collaboration-agent/SKILL.md) | 知识库项目脑暴、预研课题、甘特时间线、Temi `/photo` 现场空闲感知（见 `references/`） |
 
 ### 🤖 机器人
 
 | Skill | 作用 |
 |---|---|
-| [temi-connector](skills/temi-connector/SKILL.md) | 自然语言控制 Temi（`feishu_classmate_temi_control`） |
+| [temi-connector](skills/temi-connector/SKILL.md) | 自然语言控制 Temi（`feishu_classmate_temi_control`，含「拍照」→ `/photo`） |
 
 ---
 
@@ -292,12 +292,12 @@ feishu-classmate/
 │   │   ├── supervision/         # 3 个监督会话 tool
 │   │   ├── chat/                # 闲聊冷却
 │   │   └── research/search-works.ts  # arXiv
-│   ├── services/                # 4 个 cron
+│   ├── services/                # project-scheduler 等
 │   └── util/
 │       ├── register-tool.ts     # zod→TypeBox 适配器
 │       └── feishu-api.ts        # @larksuiteoapi/node-sdk 包装
-├── skills/                      # 7 × SKILL.md
 ├── temi-sidecar/                # Python FastAPI + mock
+├── skills/                      # 8 × SKILL.md
 ├── scripts/
 │   ├── smoke.sh                 # 部署冒烟
 │   ├── dev.sh                   # 开发启动
