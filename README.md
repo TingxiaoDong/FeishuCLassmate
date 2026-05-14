@@ -11,7 +11,6 @@
 <img src="https://img.shields.io/badge/Node-22%2B-339933?style=flat-square&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/Skills-34-blueviolet?style=flat-square" />
 <img src="https://img.shields.io/badge/Tables-20%2B-orange?style=flat-square" />
 <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
 
@@ -98,7 +97,7 @@
 │            idle-loop        │◄──►│ temi-sidecar (Python FastAPI)   │
 │            equipment-patrol │    │  /goto /speak /stop /rfid ...   │
 │            supervision-tick │    └──────────────┬──────────────────┘
-│  skills/   34 × SKILL.md    │                   │ WebSocket
+            │ WebSocket
 └─────────────────────────────┘    ┌──────────────▼──────────────────┐
                                    │       Temi Robot                │
                                    └─────────────────────────────────┘
@@ -168,7 +167,6 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 ## 🛠️ Skills Catalog
 
-**34 个 Agentic Skill**（`main` 含 `develop` 全套 lab skill，另含 `main` 分支独有的 `manage-project` / `autonomous-research` / `temi-connector`）。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
 
 ### 🎓 教学 / 访客
 
@@ -356,7 +354,6 @@ feishu-classmate/
 │   └── util/
 │       ├── register-tool.ts     # zod→TypeBox 适配器
 │       └── feishu-api.ts        # @larksuiteoapi/node-sdk 包装
-├── skills/                      # 34 × SKILL.md（main：develop 全集 + 上述 3 个） 
 ├── temi-sidecar/                # Python FastAPI + mock
 ├── scripts/
 │   ├── smoke.sh                 # 部署冒烟
