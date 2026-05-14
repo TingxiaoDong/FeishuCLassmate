@@ -63,6 +63,11 @@ export interface ClassmateConfig {
     sidecarUrl: string;
     mockMode: boolean;
   };
+  /** AutoResearchClaw sidecar — async 23-stage pipeline for validating lab ideas. */
+  arc: {
+    sidecarUrl: string;
+    mockMode: boolean;
+  };
   schedules: {
     ganttCheckCron: string;
     equipmentPatrolCron: string;
@@ -113,6 +118,10 @@ export function readConfig(raw: unknown): ClassmateConfig {
     temi: {
       sidecarUrl: cfg.temi?.sidecarUrl || process.env.TEMI_SIDECAR_URL || 'http://127.0.0.1:8091',
       mockMode: cfg.temi?.mockMode ?? envBool('TEMI_MOCK', true),
+    },
+    arc: {
+      sidecarUrl: cfg.arc?.sidecarUrl || process.env.ARC_SIDECAR_URL || 'http://127.0.0.1:8092',
+      mockMode: cfg.arc?.mockMode ?? envBool('ARC_MOCK', true),
     },
     schedules: {
       ganttCheckCron: cfg.schedules?.ganttCheckCron || '0 9 * * *',

@@ -11,6 +11,7 @@
  *   - `supervision/*`: stateful self-supervision sessions (in-memory state)
  *   - `chat/*`       : in-memory student interaction throttle / topic picker
  *   - `research/search-works`: arxiv search (bitable write is delegated to lark)
+ *   - `research/arc/*`: async bridge to the AutoResearchClaw sidecar (idea validation)
  *
  * What we DO NOT register anymore (delegated to lark's raw bitable tools):
  *   - project_ingest / project_create
@@ -27,6 +28,7 @@ import { registerSupervisionTools } from './supervision/index.js';
 import { registerTemiTools } from './temi/index.js';
 import { registerChatTools } from './chat/index.js';
 import { registerResearchSearchWorks } from './research/search-works.js';
+import { registerResearchArcTools } from './research/arc/index.js';
 
 export function registerAllTools(api: OpenClawPluginApi): void {
   registerDataLayout(api);
@@ -34,4 +36,5 @@ export function registerAllTools(api: OpenClawPluginApi): void {
   registerTemiTools(api);
   registerChatTools(api);
   registerResearchSearchWorks(api);
+  registerResearchArcTools(api);
 }
