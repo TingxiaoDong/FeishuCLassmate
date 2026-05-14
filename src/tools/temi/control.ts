@@ -7,7 +7,7 @@
  *        /wakeup, /follow-start, /follow-stop,
  *        /detection-start, /detection-stop,
  *        /save-location, /delete-location,
- *        /detect-person, /rfid-scan, /monitor-focus, /gesture
+ *        /detect-person, /photo, /rfid-scan, /monitor-focus, /gesture
  *   GET  /status
  */
 
@@ -104,6 +104,8 @@ const SUPPORTED_ACTIONS: Array<{
     body: p => ({ name: String(p.locationName ?? p.name ?? '') }) },
   { actions: ['deleteLocation'], method: 'post', path: '/delete-location',
     body: p => ({ name: String(p.locationName ?? p.name ?? '') }) },
+  // 场景快照（科研协作 skill 用于判断现场是否适合打扰）
+  { actions: ['takePicture'], method: 'post', path: '/photo', body: () => ({}) },
   // 状态查询
   { actions: ['status'],          method: 'get',  path: '/status' },
 ];
@@ -134,6 +136,12 @@ const MOCK_RETURNS: Record<string, Record<string, unknown>> = {
   stopDetecting:  { ok: true, message: '（模拟）人员检测已关闭' },
   saveLocation:   { ok: true, message: '（模拟）位置已保存' },
   deleteLocation: { ok: true, message: '（模拟）位置已删除' },
+  takePicture: {
+    ok: true,
+    availability_hint: 'likely_free',
+    people_present: 1,
+    notes: '（模拟）/photo 场景快照',
+  },
   status:         { connected: true, battery: 87, position: { x: 1.2, y: 0.5 }, is_moving: false },
 };
 

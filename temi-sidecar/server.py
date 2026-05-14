@@ -34,7 +34,7 @@ from contextlib import asynccontextmanager
 from typing import Any, AsyncGenerator, Literal
 
 import httpx
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from pydantic import BaseModel, Field
 
 from adapters.temi import TemiWebSocketClient, extract_asr_text_from_woz, resolve_location
@@ -315,6 +315,24 @@ class DetectPersonResponse(BaseModel):
     error: str | None = None
 
 
+class PhotoRequest(BaseModel):
+    """Optional hint for logs (e.g. lab zone); does not affect auth."""
+
+    context: str | None = Field(default=None, max_length=200)
+
+
+class PhotoResponse(BaseModel):
+    """Scene snapshot interpretation for lab outreach (align with research-collaboration-agent)."""
+
+    ok: bool
+    mock: bool = False
+    availability_hint: Literal["likely_free", "likely_busy", "unknown"] = "unknown"
+    people_present: int | None = None
+    notes: str | None = None
+    image_base64: str | None = None
+    error: str | None = None
+
+
 class Position(BaseModel):
     x: float
     y: float
@@ -536,6 +554,55 @@ async def detect_person(req: DetectPersonRequest) -> DetectPersonResponse:
     # Real mode — Phase 1: return null; Phase 2 will call detect_person()
     logger.info("/detect-person called (real mode, Phase 1 stub) timeout_ms=%d", req.timeout_ms)
     return DetectPersonResponse(open_id=None, confidence=0.0)
+
+
+# ---------------------------------------------------------------------------
+# /photo — scene snapshot for availability (Temi camera, not Feishu presence)
+# ---------------------------------------------------------------------------
+
+@app.post("/photo", response_model=PhotoResponse)
+async def photo(req: PhotoRequest = Body(default_factory=PhotoRequest)) -> PhotoResponse:
+    """One-shot scene snapshot to infer coarse lab presence / interruptibility.
+
+    Used by the research-collaboration-agent skill: prefer this over Feishu
+    user status or calendar when deciding whether to initiate in-lab social reach-out.
+    """
+    _mark_command_activity()
+    if _is_mock():
+        logger.info("[mock] /photo context=%r", req.context)
+        return PhotoResponse(
+            ok=True,
+            mock=True,
+            availability_hint="likely_free",
+            people_present=1,
+            notes="[mock] Single person at bench, screen-facing work, no obvious call/meeting pose.",
+        )
+
+    assert _state.client is not None
+    try:
+        out = await _state.client.photo_scene(req.context)
+        hint = str(out.get("availability_hint", "unknown"))
+        if hint not in ("likely_free", "likely_busy", "unknown"):
+            hint = "unknown"
+        return PhotoResponse(
+            ok=True,
+            mock=False,
+            availability_hint=hint,  # type: ignore[arg-type]
+            people_present=out.get("people_present") if isinstance(out.get("people_present"), int) else None,
+            notes=out.get("notes") if isinstance(out.get("notes"), str) else None,
+            image_base64=out.get("image_base64") if isinstance(out.get("image_base64"), str) else None,
+        )
+    except NotImplementedError as exc:
+        logger.info("/photo real mode stub: %s", exc)
+        return PhotoResponse(
+            ok=True,
+            mock=False,
+            availability_hint="unknown",
+            notes=str(exc),
+        )
+    except Exception as exc:
+        logger.exception("/photo failed")
+        return PhotoResponse(ok=False, error=str(exc), availability_hint="unknown")
 
 
 # ---------------------------------------------------------------------------

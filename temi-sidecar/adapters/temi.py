@@ -14,7 +14,7 @@ The tongji-cdi temi-woz-android app requires an "id" string on speak / ask / got
 (see TemiWebsocketServer.java); omitting it causes JSONException and the command
 is ignored. Completion is broadcast as JSON {"id": "<same-uuid>"}.
 
-Phase-2 stubs (detect_person, rfid_scan, monitor_focus, gesture) raise
+Phase-2 stubs (detect_person, rfid_scan, monitor_focus, gesture, photo_scene) raise
 NotImplementedError in real mode and return sample data in mock mode.
 """
 
@@ -463,6 +463,16 @@ class TemiWebSocketClient:
     async def constraint_be_with(self) -> bool:
         result = await self.send_command({"command": "constraintBeWith"}, timeout=20.0)
         return result.get("status") != "error"
+
+    async def photo_scene(self, context: str | None = None) -> dict[str, Any]:
+        """Capture scene snapshot for coarse availability (used by research agent).
+
+        Expected keys when implemented: availability_hint, people_present, notes,
+        optional image_base64. Real Temi vision pipeline not wired yet.
+        """
+        raise NotImplementedError(
+            "photo_scene: integrate Temi camera snapshot + scene/presence inference"
+        )
 
     # ------------------------------------------------------------------
     # Phase-2 stubs — raise NotImplementedError in real mode
