@@ -14,11 +14,11 @@ pnpm build && pnpm typecheck && pnpm test
 ## 怎么加新 skill(最常见)
 
 1. 在 `skills/<kebab-name>/` 新建目录
-2. 创建 `SKILL.md`,照着 [`skills/manage-gantt/SKILL.md`](skills/manage-gantt/SKILL.md) 的模板
+2. 创建 `SKILL.md`,照着 [`skills/manage-project/SKILL.md`](skills/manage-project/SKILL.md) 的模板
 3. **只引用官方 lark 工具 + `feishu_classmate_data_layout`** — 不要写新的 zod 包装 tool
 4. 提 PR,描述触发场景 + 有什么数据写入
 
-> 详细 skill 写作规范见 [`docs/SKILL_AUTHORING.md`](docs/SKILL_AUTHORING.md)(TODO · 暂见 manage-gantt 范例)。
+> 详细 skill 写作规范见 [`docs/SKILL_AUTHORING.md`](docs/SKILL_AUTHORING.md)(TODO · 暂见 manage-project 范例)。
 
 ## 怎么加新 tool(慎重)
 

@@ -2,8 +2,9 @@
 name: lab-tour-prepare
 description: |
   教师/管理员为来访访客「预生成」个性化导览讲解稿时使用。
-  读取知识库中的导览母版,结合访客单位与日期,新建一篇飞书 Doc 作为当次剧本。
+  读取知识库中的导览母版，自动识别访客单位信息并联网搜索公司背景，结合单位属性生成高度贴合访客兴趣的定制化导览稿，新建一篇飞书 Doc 作为当次剧本。
   **触发**: 「给 XX 单位准备导览」「生成今天的参观讲解稿」「预生成导览文档」。
+  **个性化特性**: 自动识别用户输入中的公司名称，联网搜索公司主营业务、行业方向、技术需求、近期动态等信息，分析访客兴趣点后定制讲解大纲，重点展示与访客匹配的实验室成果。
 
   **不要用于**: 访客已到现场的边走边讲 —— 请用 skill `lab-tour-run`。
 ---
@@ -12,12 +13,21 @@ description: |
 
 ## 最短路径
 
-1. `feishu_classmate_data_layout()` → 取 `plugin_docs.tourTemplate`(母版)与 `plugin_docs.publicProjects`。
-2. 若无 `tourTemplate`,向用户说明需在插件配置 `docs.tourTemplate` 或环境变量 `FEISHU_DOC_TOUR_TEMPLATE` 中配置母版 Doc,或用户提供母版链接/token。
-3. 用 **openclaw-lark** 的 `feishu_fetch_doc` / `feishu_search_doc_wiki` 读母版全文。
-4. 按用户给的访客信息,用 LLM 生成结构化 Markdown(章节必须与 [**doc-format**](./references/doc-format.md) 一致)。
-5. **openclaw-lark** `feishu_create_doc`(或等价) 新建 Doc,标题建议:`{日期}-{访客简称}-导览`。
-6. 回复用户:**新 Doc 链接**、建议的**现场唤醒句**(写入 doc 末尾「唤醒」一节),并提示执行现场导览时调用 skill **`lab-tour-run`** 并传入该 `document_id`/链接。
+1. `feishu_classmate_data_layout()` → 取 `plugin_docs.publicProjects`，并**优先访问【知识库-公共协作区-导览母版】目录查找导览母版文件**。
+2. 若在知识库未找到导览母版，再尝试读取配置项 `plugin_docs.tourTemplate` 或环境变量 `FEISHU_DOC_TOUR_TEMPLATE`，或向用户说明需提供母版链接/token。
+3. 用 **openclaw-lark** 的 `feishu_fetch_doc` / `feishu_search_doc_wiki` 从【知识库-公共协作区-导览母版】读取母版全文。
+4. **访客信息个性化处理**：
+   - 从用户输入中提取访客单位/公司名称、人员身份等信息
+   - 若识别到具体公司名称，调用 `web_search` 工具搜索以下信息：
+     ✅ 公司主营业务、所属行业赛道
+     ✅ 核心技术方向、产品布局
+     ✅ 近期融资/合作/发布动态
+     ✅ 与实验室研究方向的契合点、潜在合作可能性
+   - 分析访客兴趣侧重（如技术交流/投资考察/人才招聘/产学研合作等）
+5. **生成定制化大纲**：基于访客兴趣分析结果，在[**doc-format**](./references/doc-format.md)的基础上调整章节权重，对与访客匹配度高的内容重点展开，相关性低的内容简化
+6. 结合母版内容、公共项目信息、访客个性化大纲，用 LLM 生成结构化 Markdown 导览稿
+7. **openclaw-lark** `feishu_create_doc`(或等价) 新建 Doc,标题建议:`{日期}-{访客简称}-导览`。
+8. 回复用户:**新 Doc 链接**、建议的**现场唤醒句**(写入 doc 末尾「唤醒」一节),并提示执行现场导览时调用 skill **`lab-tour-run`** 并传入该 `document_id`/链接。
 
 ## 详细步骤与占位符
 
@@ -26,3 +36,5 @@ description: |
 ## 降级
 
 - 母版读失败 → 仅用 `labInfo` + `publicProjects` 摘要生成短篇 Doc,仍保存为新文档。
+- 公司信息搜索失败/无有效结果 → 忽略个性化步骤，按通用模板生成导览稿，不影响整体流程。
+- 无法识别访客单位信息 → 生成通用版导览稿。
