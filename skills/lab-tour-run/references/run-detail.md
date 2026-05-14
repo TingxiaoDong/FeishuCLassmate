@@ -45,7 +45,7 @@
 
 ## 安全
 
-- 不透露保密项目;`temi_stop` 见主 SKILL
+- 不透露保密项目;`feishu_classmate_temi_stop` 见主 SKILL
 
 ## 事后(可选)
 

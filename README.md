@@ -190,6 +190,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 |---|---|
 | [academic-paper-search](skills/academic-paper-search/SKILL.md) | 学术文献检索策略、质量评估与引用扩展（见 `references/`） |
 | [research-collaboration-agent](skills/research-collaboration-agent/SKILL.md) | 知识库项目脑暴、预研课题、甘特时间线、Temi `/photo` 现场空闲感知（见 `references/`） |
+| [intelligent-meeting-scheduling](skills/intelligent-meeting-scheduling/SKILL.md) | 导师发起后自动排期会议、会前 Temi 线下寻人提醒、未找到时飞书兜底提醒 |
 
 ### 🤖 机器人
 

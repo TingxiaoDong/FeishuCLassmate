@@ -1,6 +1,6 @@
 /**
  * Project management scheduler: triggers periodic manage-project skill tasks
- * - Daily progress check at 12:00
+ * - Daily DDL reminder check at 14:00 (Asia/Shanghai)
  * - Weekly report generation at 18:00 every Sunday
  */
 
@@ -9,7 +9,7 @@ import { getConfigFromApi } from '../config.js';
 import { scheduleCron } from '../util/cron.js';
 
 export function registerProjectScheduler(api: OpenClawPluginApi): void {
-  // Daily progress check task
+  // Daily DDL reminder task
   const runProgressCheck = async () => {
     const cfg = getConfigFromApi(api);
     if (!cfg.labInfo.broadcastChatId) {
@@ -29,7 +29,8 @@ export function registerProjectScheduler(api: OpenClawPluginApi): void {
     }
 
     await emit({
-      prompt: '请执行manage-project技能，完成今日所有项目的进度检查，标记逾期节点并给对应负责人发送提醒消息。',
+      prompt:
+        '请执行manage-project技能：在北京时间14:00检查甘特图多维表格中DDL为今天的任务；按负责人聚合任务并确保同一负责人当天仅提醒一次。每位负责人先驱动temi在实验室寻找并当面提醒；若未找到，再通过飞书私信发送合并提醒。',
       scope: 'scheduled',
     });
   };
