@@ -8,12 +8,14 @@ import { registerTemiRfidScan } from './rfid-scan.js';
 import { registerTemiMonitorFocus } from './monitor-focus.js';
 import { registerTemiGesture } from './gesture.js';
 import { registerTemiWakeup } from './wakeup.js';
+import { registerTemiControl } from './control.js';
 
 export function registerTemiTools(api: OpenClawPluginApi): void {
   registerTemiNavigateTo(api);
   registerTemiSpeak(api);
   registerTemiStop(api);
   registerTemiWakeup(api);
+  registerTemiControl(api);
   registerTemiDetectPerson(api);
   registerTemiStatus(api);
   registerTemiRfidScan(api);

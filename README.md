@@ -11,7 +11,7 @@
 <img src="https://img.shields.io/badge/Node-22%2B-339933?style=flat-square&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/TypeScript-5.9-3178c6?style=flat-square&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776ab?style=flat-square&logo=python&logoColor=white" />
-<img src="https://img.shields.io/badge/Skills-31-blueviolet?style=flat-square" />
+<img src="https://img.shields.io/badge/Skills-7-blueviolet?style=flat-square" />
 <img src="https://img.shields.io/badge/Tables-20%2B-orange?style=flat-square" />
 <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" />
 
@@ -98,7 +98,7 @@
 │            idle-loop        │◄──►│ temi-sidecar (Python FastAPI)   │
 │            equipment-patrol │    │  /goto /speak /stop /rfid ...   │
 │            supervision-tick │    └──────────────┬──────────────────┘
-│  skills/   31 × SKILL.md    │                   │ WebSocket
+│  skills/   7 × SKILL.md     │                   │ WebSocket
 └─────────────────────────────┘    ┌──────────────▼──────────────────┐
                                    │       Temi Robot                │
                                    └─────────────────────────────────┘
@@ -168,86 +168,34 @@ node_modules/.bin/openclaw classmate setup-bitable
 
 ## 🛠️ Skills Catalog
 
-**31 个 Agentic Skill**。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
+**7 个 Agentic Skill**（与 `skills/` 目录一致；已移除未再维护的实验室扩展 skill）。每个 skill 是一份 `SKILL.md`,OpenClaw 自动注入 agent system prompt,让 LLM 按流程调官方 `@larksuite/openclaw-lark` 工具。
 
-### 🎓 教学 / 访客
+### 🎓 访客导览
 
 | Skill | 作用 |
 |---|---|
 | [conduct-lab-tour](skills/conduct-lab-tour/SKILL.md) | 导览入口 → [lab-tour-prepare](skills/lab-tour-prepare/SKILL.md)(写稿) / [lab-tour-run](skills/lab-tour-run/SKILL.md)(现场) |
-| [lab-onboarding](skills/lab-onboarding/SKILL.md) | 新生 12 项入职 checklist 自动跟进 |
+| [lab-tour-prepare](skills/lab-tour-prepare/SKILL.md) | 预生成参观讲解稿（知识库母版、访客个性化与 `web_search`） |
+| [lab-tour-run](skills/lab-tour-run/SKILL.md) | 现场导览执行 |
 
-### 📊 项目 / 进度
-
-| Skill | 作用 |
-|---|---|
-| [manage-gantt](skills/manage-gantt/SKILL.md) | 口述 → 甘特图;每日节点提醒 |
-| [weekly-digest](skills/weekly-digest/SKILL.md) | 每周五自动生成 lab 周报 |
-| [daily-standup](skills/daily-standup/SKILL.md) | 每日站会汇总 |
-
-### 🔬 实验 / 训练
+### 📊 项目与自主研究
 
 | Skill | 作用 |
 |---|---|
-| [training-run-tracker](skills/training-run-tracker/SKILL.md) | RL/ML 训练 Run 元数据 + W&B/TB 链接 |
-| [robot-checkpoint](skills/robot-checkpoint/SKILL.md) | Policy checkpoint + A/B 对比 |
-| [simulation-log](skills/simulation-log/SKILL.md) | Sim-to-Real gap + 可复现 seed 管理 |
-| [log-experiment](skills/log-experiment/SKILL.md) | 通用实验记录 |
+| [manage-project](skills/manage-project/SKILL.md) | 项目与进度全流程（甘特、逾期、周报等，面向 Lab 知识库） |
+| [autonomous-research](skills/autonomous-research/SKILL.md) | 基于知识库文档的自主选题、联网检索与研究报告 |
 
-### 📚 文献 / 投稿
+### 📚 学术检索
 
 | Skill | 作用 |
 |---|---|
-| [manage-papers](skills/manage-papers/SKILL.md) | arXiv 自动抓 + 本地 Papers 库 |
-| [academic-paper-search](skills/academic-paper-search/SKILL.md) | 学术文献检索专家：多平台 Query、质量评估、引用扩展与迭代（见 `references/`） |
-| [submission-tracking](skills/submission-tracking/SKILL.md) | 投稿状态机(准备中 → 已投 → 审稿 → 接收/拒/修改) |
-| [idle-research](skills/idle-research/SKILL.md) | 闲时自主研究周报 |
+| [academic-paper-search](skills/academic-paper-search/SKILL.md) | 学术文献检索策略、质量评估与引用扩展（见 `references/`） |
 
-### 🔧 器材 / 资源
+### 🤖 机器人
 
 | Skill | 作用 |
 |---|---|
-| [manage-equipment](skills/manage-equipment/SKILL.md) | 借还登记 + RFID 每日巡查 |
-| [reserve-equipment](skills/reserve-equipment/SKILL.md) | GPU / 3D 打印机 / 显微镜时段预约 |
-
-### 👨‍🏫 导师 / 管理
-
-| Skill | 作用 |
-|---|---|
-| [supervisor-dashboard](skills/supervisor-dashboard/SKILL.md) | `/dashboard` 一键看所有学生进度 |
-| [supervisor-task-assign](skills/supervisor-task-assign/SKILL.md) | 自然语言派任务 + 自动 DM |
-| [one-on-one-scheduler](skills/one-on-one-scheduler/SKILL.md) | 1:1 排期 + 自动生成议程 |
-| [supervise-student](skills/supervise-student/SKILL.md) | 学生自我监督会话(线上 + 线下) |
-
-### 📋 会议 / 协同
-
-| Skill | 作用 |
-|---|---|
-| [meeting-agenda](skills/meeting-agenda/SKILL.md) | 组会议程前 24h 收集 |
-| [meeting-minutes](skills/meeting-minutes/SKILL.md) | 纪要 → 行动项 → 自动进 Gantt |
-| [reading-group](skills/reading-group/SKILL.md) | 每周 paper 轮值 + 讨论点生成 |
-
-### 👥 人才 / 成长
-
-| Skill | 作用 |
-|---|---|
-| [mentor-dispatch](skills/mentor-dispatch/SKILL.md) | 新生提问 → 自动匹配师兄师姐 |
-| [skill-tree](skills/skill-tree/SKILL.md) | 技能标签库(ROS / MuJoCo / RL / SLAM 等) |
-| [initiate-conversation](skills/initiate-conversation/SKILL.md) | Bot 主动闲聊(有边界 + 冷却) |
-
-### 📖 知识 / 文化
-
-| Skill | 作用 |
-|---|---|
-| [failure-archive](skills/failure-archive/SKILL.md) | "失败博物馆" — 实验教训归档,防重复踩坑 |
-| [lab-faq-search](skills/lab-faq-search/SKILL.md) | 入门 FAQ 搜索(Docker / GPU / SSH 等) |
-| [lab-meme](skills/lab-meme/SKILL.md) | 实验室段子 / inside jokes(带 consent 审核) |
-
-### 🧬 技能沉淀
-
-| Skill | 作用 |
-|---|---|
-| [evolve-telemetry](skills/evolve-telemetry/SKILL.md) | 查询 ToolTrace 轨迹,辅助 skill 迭代 |
+| [temi-connector](skills/temi-connector/SKILL.md) | 自然语言控制 Temi（`feishu_classmate_temi_control`） |
 
 ---
 
@@ -258,7 +206,7 @@ node_modules/.bin/openclaw classmate setup-bitable
 | 组 | Tool | 用途 |
 |---|---|---|
 | `data` | `feishu_classmate_data_layout` | 返回 app_token + table_ids + 字段 schema |
-| `temi` | `navigate_to` / `speak` / `stop` / `wakeup` / `detect_person` / `status` / `rfid_scan` / `monitor_focus` / `gesture` | Temi sidecar HTTP 控制 |
+| `temi` | `navigate_to` / `speak` / `stop` / `wakeup` / `temi_control` / `detect_person` / `status` / `rfid_scan` / `monitor_focus` / `gesture` | Temi sidecar HTTP 控制 |
 | `supervision` | `start` / `tick` / `summarize` | 有状态的监督会话(内存) |
 | `chat` | `pick_topic` / `should_engage` | 闲聊触发冷却 |
 | `research` | `search_works` | arXiv 搜索 |
@@ -318,7 +266,7 @@ pnpm format      # Prettier
 
 ### 加新 skill
 
-1. 新建 `skills/<name>/SKILL.md`,照 [manage-gantt/SKILL.md](skills/manage-gantt/SKILL.md) 模板
+1. 新建 `skills/<name>/SKILL.md`,照 [manage-project/SKILL.md](skills/manage-project/SKILL.md) 模板
 2. 重启 gateway,OpenClaw 自动扫到
 3. 在 skill 里**只**用 `@larksuite/openclaw-lark` 的 raw tool + `feishu_classmate_data_layout`,不写新 zod tool
 
@@ -348,7 +296,7 @@ feishu-classmate/
 │   └── util/
 │       ├── register-tool.ts     # zod→TypeBox 适配器
 │       └── feishu-api.ts        # @larksuiteoapi/node-sdk 包装
-├── skills/                      # 31 × SKILL.md
+├── skills/                      # 7 × SKILL.md
 ├── temi-sidecar/                # Python FastAPI + mock
 ├── scripts/
 │   ├── smoke.sh                 # 部署冒烟
