@@ -34,7 +34,7 @@ Possible Implementation Path:
 ### （2）论文启发
 
 - 用 `feishu_classmate_research_search_works` 按关键词拉 arXiv 摘要（本仓库当前实现为 arXiv Atom）。  
-- 更宽学术检索（Scholar / Semantic Scholar 等）时：**加载** [academic-paper-search](../academic-paper-search/SKILL.md) 及其 `references/`，遵守其来源与反幻觉规则。
+- 更宽学术检索（Scholar / Semantic Scholar 等）时：**加载** [academic-paper-search](../academic-paper-search/SKILL.md) 及其 `references/`（含 **person-preferences-and-memory**），遵守其来源与反幻觉规则；若论文列表面向某位具体同学，先解析其 `open_id` 再检索与排序。
 
 对每篇高相关论文自问：
 

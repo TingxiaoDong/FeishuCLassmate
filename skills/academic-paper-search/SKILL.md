@@ -1,6 +1,8 @@
 ---
 name: academic-paper-search
-description: |
+description: Academic paper search with per-student (open_id) preference memory, Feishu identity resolution, and iterative query/refinement; see references/.
+---
+
 ## 何时读取子文档
 
 按需展开（避免一次塞满上下文）：
@@ -8,6 +10,7 @@ description: |
 | 主题 | 文件 |
 |------|------|
 | 角色、核心目标 | [references/role-and-goals.md](references/role-and-goals.md) |
+| **按人识别、偏好落盘、迭代闭环** | [references/person-preferences-and-memory.md](references/person-preferences-and-memory.md) |
 | 可信来源与应避开的站点 | [references/scholarly-sources.md](references/scholarly-sources.md) |
 | 意图分析 + 构造多组学术 Query | [references/intent-and-queries.md](references/intent-and-queries.md) |
 | 检索策略 + 迭代改进 | [references/search-and-iteration.md](references/search-and-iteration.md) |
@@ -17,18 +20,20 @@ description: |
 
 执行任何检索任务时，按顺序落实下列步骤；细节与原文约束见上表链接。
 
-1. **理解意图** — 抽取主题、领域、问题、技术词、约束、期望论文类型；请求模糊则推断方向。
-2. **生成多组 Query** — 基础词、学术表述、高被引/综述向、最新研究向、同义词扩展（见 `intent-and-queries.md`）。
+0. **锚定服务对象 + 加载个人偏好** — 解析本次论文是**给哪位同学**（具体到 `open_id`）；`read_file` 其 `memory/paper-preferences/<open_id>.md`（若存在）。详见 `person-preferences-and-memory.md`。
+1. **理解意图** — 抽取主题、领域、问题、技术词、约束、期望论文类型；请求模糊则推断方向；**与个人偏好摘要合并**（不矛盾时兼顾，矛盾时以本轮用户明确指令为准）。
+2. **生成多组 Query** — 基础词、学术表述、高被引/综述向、最新研究向、同义词扩展；**融入偏好与排斥信号**（见 `intent-and-queries.md`）。
 3. **分阶段检索** — 先宽后窄；依据高相关文献、重复关键词、重要作者、**引用关系**、常见方法迭代收紧（见 `search-and-iteration.md`）。
 4. **评估** — 相关性、质量（引用、venue、时效、方法严谨性）、论文类型归类。
-5. **排序** — 优先高相关、有学术影响、严谨、在合适场景下兼顾新近；避免仅关键词表面匹配。
+5. **排序** — 优先高相关、有学术影响、严谨、在合适场景下兼顾新近；**在同等条件下按该同学历史偏好加权**；避免仅关键词表面匹配。
 6. **引用扩展** — 对核心论文：参考文献、cited-by、奠基工作、后续跟进，形成研究谱系。
 7. **结构化输出** — 每篇：title / authors / year / venue / paper type / 相关性说明；再归纳主题、方法、趋势与可能空白（见 `evaluation-output-rules.md`）。
 8. **迭代** — 结果弱则改 Query、扩/缩范围、换平台、换邻近领域，直到相关性改善。
+9. **私聊征询 + 偏好回写** — 交付列表后，在权限允许时**向该同学发飞书私聊**，请其用编号说明**哪几篇更符合需求**（及可选的不贴之处）；再结合其回复或同轮对话中的反应、`manage-papers` 保存行为，更新 `memory/paper-preferences/<open_id>.md`；无法私聊则在当前渠道同样征询。详见 `person-preferences-and-memory.md` 第六节。
 
 ## 硬性约束（摘要）
 
-- **必须**：分步思考；检索前推理；优先一手学术源；**以摘要为主**评估，不单看标题；不捏造文献信息。
-- **禁止**：伪造引用或推荐虚假论文；轻信低质站；仅凭关键词重叠堆砌无关论文。
+- **必须**：分步思考；检索前推理；优先一手学术源；**以摘要为主**评估，不单看标题；不捏造文献信息；**有具体服务对象时必须先 open_id 再检索**；交付论文后在条件允许时**私聊征询**其更符合需求的篇目；有反馈时**持久化个人偏好**。
+- **禁止**：伪造引用或推荐虚假论文；轻信低质站；仅凭关键词重叠堆砌无关论文；**用「通用画像」替代已知的个人偏好文件**。
 
 完整「必须 / 禁止」、输出字段模板与高级行为见 [references/evaluation-output-rules.md](references/evaluation-output-rules.md)。

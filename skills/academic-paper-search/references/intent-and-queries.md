@@ -73,3 +73,14 @@ Example:
 → embodied agent
 → autonomous agent
 → manipulation system
+
+---
+
+## Per-person query shaping
+
+If `memory/paper-preferences/<open_id>.md` exists for the target student, merge its **stable summary** into Step 2:
+
+- Add venue / subfield / recency terms the student prefers.
+- Treat **rejected patterns** as soft negative context (narrow or deprioritize in wording; do not violate scholarly-source rules in [scholarly-sources.md](scholarly-sources.md)).
+
+Full workflow: [person-preferences-and-memory.md](person-preferences-and-memory.md).

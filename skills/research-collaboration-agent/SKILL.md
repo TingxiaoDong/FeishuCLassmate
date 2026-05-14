@@ -20,7 +20,7 @@ feishu_classmate_data_layout()
 
 所有 Bitable 写入使用 **`@larksuite/openclaw-lark` 原生** `feishu_bitable_app_table_record` / `feishu_bitable_app_table_field` / `feishu_bitable_app_table_view`（及同族 API），**禁止**在本 skill 内手写 Open Platform HTTP；若需理解 REST 语义，仅作背景阅读，执行时一律走 Lark 工具。
 
-论文检索策略与学术源优先级见同仓库 **[academic-paper-search](../academic-paper-search/SKILL.md)**；本 skill 在「论文启发」场景下应加载该 skill 的 `references/`。
+论文检索策略与学术源优先级见同仓库 **[academic-paper-search](../academic-paper-search/SKILL.md)**；本 skill 在「论文启发」场景下应加载该 skill 的 `references/`，并遵守其中 **按同学 `open_id` 加载/回写 `memory/paper-preferences/<open_id>.md`** 的闭环（见 `references/person-preferences-and-memory.md`）。
 
 课题级 arXiv 拉摘要用插件工具：`feishu_classmate_research_search_works`（topic/limit）。
 

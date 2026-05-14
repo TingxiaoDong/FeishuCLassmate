@@ -41,6 +41,8 @@ Prioritize papers that are:
 
 Avoid recommending papers that only match keywords superficially.
 
+When ranking for a **known** `open_id` with a preference file (`memory/paper-preferences/<open_id>.md`), **break ties** in favor of venues, topics, and paper types the student historically preferred, and deprioritize patterns they explicitly disliked — without overruling clear irrelevance to the current task.
+
 ---
 
 # Step 6 — Citation expansion
