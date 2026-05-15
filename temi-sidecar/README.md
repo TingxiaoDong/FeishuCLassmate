@@ -101,7 +101,7 @@ When the WOZ app on Temi finishes speech recognition, it emits WebSocket JSON wi
 ### Normal mode (real robot)
 
 ```bash
-TEMI_IP=192.168.1.100 uvicorn server:app --host 0.0.0.0 --port 8091
+TEMI_IP=192.168.31.121 uvicorn server:app --host 0.0.0.0 --port 8091
 ```
 
 If the robot is unreachable at startup, the sidecar logs a warning and
